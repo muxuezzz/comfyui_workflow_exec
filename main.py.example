@@ -1,0 +1,89 @@
+import logging
+from typing import Dict, List, Any, Optional
+from pathlib import Path
+
+from workflow_run import WorkflowRunner
+
+# 配置日志
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
+
+def preprocess_callback():
+    """前处理函数示例：每次工作流调用前执行"""
+    logger.info("执行自定义前处理逻辑...")
+    # 可以在这里添加：
+    # - 检查资源可用性
+    # - 清理临时文件
+    # - 记录开始时间等
+    pass
+
+def postprocess_callback(output_images: Dict[str, List[bytes]]) -> Dict[str, List[str]]:
+    """后处理函数示例：每次工作流调用后执行"""
+    logger.info("执行自定义后处理逻辑...")
+    # 保存图片并返回保存路径
+    saved_paths = {}
+    output_dir = Path("output_images")
+    output_dir.mkdir(exist_ok=True)
+    
+    for node_id, images in output_images.items():
+        node_paths = []
+        for i, image_data in enumerate(images):
+            filename = f"node_{node_id}_image_{i}.png"
+            filepath = output_dir / filename
+            with open(filepath, "wb") as f:
+                f.write(image_data)
+            node_paths.append(str(filepath))
+            logger.info(f"图片保存至: {filepath}")
+        saved_paths[node_id] = node_paths
+    
+    return saved_paths
+
+def workflow_modify_callback(workflow_data: Dict) -> Dict:
+    """工作流修改回调函数示例：在执行前修改工作流"""
+    logger.info("执行自定义工作流修改...")
+    # 示例：修改KSampler节点的steps参数
+    for node_id, node_info in workflow_data.items():
+        if node_info.get("class_type") == "KSampler":
+            # 修改步数为30
+            if "inputs" in node_info:
+                node_info["inputs"]["steps"] = 30
+                logger.info(f"修改节点 {node_id} 的steps参数为30")
+    
+    # 可以添加更多自定义修改逻辑
+    return workflow_data
+
+def main():
+    # 配置文件路径
+    config_file = "testworkflowconfig/config/my_config.json"
+    
+    # 初始化工作流运行器
+    runner = WorkflowRunner(
+        config_path=config_file,
+        server_address="127.0.0.1:8188"  # ComfyUI服务器地址
+    )
+    
+    # 设置回调函数
+    runner.set_preprocess_callback(preprocess_callback)
+    runner.set_postprocess_callback(postprocess_callback)
+    runner.set_workflow_modify_callback(workflow_modify_callback)
+    
+    try:
+        # 执行工作流
+        logger.info("开始执行工作流...")
+        results = runner.run(
+            random_init=True,  # 启用随机初始化
+            remove_previews=True  # 移除预览节点
+        )
+        
+        logger.info("工作流执行完成，结果：")
+        for node_id, paths in results.items():
+            logger.info(f"节点 {node_id} 生成的图片: {paths}")
+            
+    except Exception as e:
+        logger.error(f"工作流执行过程中发生错误: {str(e)}")
+
+if __name__ == "__main__":
+    main()

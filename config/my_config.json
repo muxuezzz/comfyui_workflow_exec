@@ -1,0 +1,34 @@
+{
+  "workflow_path": "./workflow_template.json",
+  "nodes": [
+    {
+      "class_type": "Class1",
+      "item_name": "param1",
+      "value": 42,
+      "node_index": 1
+    },
+    {
+      "class_type": "Class2",
+      "item_name": "param2",
+      "value": {
+        "type": "random_range",
+        "min": 0.5,
+        "max": 10.5
+      },
+      "node_index": 1
+    },
+    {
+      "class_type": "Class3",
+      "item_name": "param3",
+      "value": {
+        "type": "random_choice",
+        "choices": [
+          "apple",
+          "banana",
+          "orange"
+        ]
+      },
+      "node_index": 1
+    }
+  ]
+}

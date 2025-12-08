@@ -1,0 +1,26 @@
+{
+  "10": {
+    "class_type": "Class1",
+    "inputs": {
+      "param1": 0
+    }
+  },
+  "11": {
+    "class_type": "Class2",
+    "inputs": {
+      "param2": 50.0
+    }
+  },
+  "12": {
+    "class_type": "Class3",
+    "inputs": {
+      "param3": "default"
+    }
+  },
+  "14": {
+    "class_type": "KSampler",
+    "inputs": {
+      "seed": 12312321
+    }
+  }
+}
