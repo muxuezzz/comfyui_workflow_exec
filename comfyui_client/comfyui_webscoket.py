@@ -24,12 +24,53 @@ logger = logging.getLogger(__name__)
 
 
 class ComfyUIWebSocketClient:
+    """
+    基于 WebSocket 协议的 ComfyUI 客户端，用于与 ComfyUI 服务器建立双向通信，
+    实现工作流提交、任务执行状态实时监控、执行结果（图片/数据）获取等核心能力。
+
+    使用示例：
+        with ComfyUIWebSocketClient(
+            server_address="127.0.0.1:8188",
+            production_mode=True     # 生产环境推荐开启
+        ) as client:
+            # 执行并监控所有图像生成过程，获取工作流程中的所有image
+            images = client.execute_workflow(prompt)
+            # 或者只执行不监控
+            client.queue_prompt(prompt, prompt_id)
+
+    生产模式（production_mode=True）特性：
+        - 关闭所有 debug 级别的日志
+        - 不显示节点执行细节、缓存列表、预览图、进度条等
+        - 不处理二进制预览消息
+        - 只输出关键信息：队列剩余、开始/完成、错误
+        - 极大减少日志量，提升性能与可读性
+
+    Attributes:
+        server_address (str): ComfyUI 服务器地址，格式为 "host:port"（如 "127.0.0.1:8188"）
+        timeout (int): WebSocket 连接超时时间（秒），默认 30 秒
+        ws (Optional[websocket.WebSocket]): WebSocket 连接实例，连接成功后非 None
+        is_connected (bool): 当前连接状态标识
+
+    - 支持上下文管理器（with 语句）自动管理连接的建立与释放
+    - 实时监听服务器推送的任务执行日志、进度、错误信息
+    - 解析并返回工作流执行生成的图片二进制数据
+    - 处理连接超时、断连重连（基础版）、任务中断等异常场景
+    """
+
     def __init__(
         self,
         server_address: str = "127.0.0.1:8188",
         timeout: int = 30,
         production_mode: bool = False,
     ):
+        """
+        初始化客户端
+
+        Args:
+            server_address: ComfyUI 服务地址，例如 "127.0.0.1:8188" 或 "mydomain.com:8188"
+            timeout: HTTP 与 WebSocket 超时时间（秒）
+            production_mode: 是否启用生产模式（强烈建议批量任务时开启）
+        """
         self.ws: Optional[websocket.WebSocket] = None
         self.client_id = str(uuid.uuid4())
         self.server_address = server_address
@@ -71,11 +112,15 @@ class ComfyUIWebSocketClient:
         min_queue_num: int = 3,  # 新增参数：当队列总任务数 < 此值时即视为空闲（默认1，和原来完全等价）
     ):
         """
-        等待队列空闲（运行中 + 等待中任务数 < min_queue_num 时视为空闲）
+        智能等待队列空闲
 
-        :param check_interval: 检查间隔时间（秒）
-        :param max_wait: 最大等待时间（秒），None表示无限等待
-        :param min_queue_num: 总任务数小于此值时视为空闲（默认1，保持原行为）
+        当队列中「运行中 + 等待中」任务总数 < min_queue_num 时即视为可执行。
+        常用于批量任务时避免堆积或触发 ComfyUI 内存溢出保护机制。
+
+        Args:
+            check_interval: 轮询间隔（秒）
+            max_wait: 最大等待时间（秒），超时抛出 TimeoutError
+            min_queue_num: 执行队列加上等待队列长度小于此数量时认为空闲
         """
         self.logger.info(f"正在等待队列任务数 < {min_queue_num} ...")
         start_time = time.time()

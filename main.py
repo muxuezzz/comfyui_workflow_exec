@@ -119,17 +119,16 @@ if __name__ == "__main__":
     ]
 
     # 初始化comfyui客户端
-    comfyui_client = ComfyUIWebSocketClient(
+    with ComfyUIWebSocketClient(
         server_address="127.0.0.1:8188", production_mode=True
-    )
-
-    # 循环执行队列中的任务
-    for idx, task in enumerate(workflow_tasks, 1):
-        logger.info(f"\n===== 执行第 {idx} 个任务 =====")
-        task_result = run_workflow(
-            config_file=task["config_file"], comfyui_client=comfyui_client
-        )
-        if task_result:
-            logger.info(f"第 {idx} 个任务结果：{task_result}")
-        else:
-            logger.warning(f"第 {idx} 个任务执行失败，跳过后续处理")
+    ) as comfyui_client:
+        # 循环执行队列中的任务
+        for idx, task in enumerate(workflow_tasks, 1):
+            logger.info(f"\n===== 执行第 {idx} 个任务 =====")
+            task_result = run_workflow(
+                config_file=task["config_file"], comfyui_client=comfyui_client
+            )
+            if task_result:
+                logger.info(f"第 {idx} 个任务结果：{task_result}")
+            else:
+                logger.warning(f"第 {idx} 个任务执行失败，跳过后续处理")

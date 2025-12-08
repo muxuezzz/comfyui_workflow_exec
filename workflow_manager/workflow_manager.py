@@ -1,83 +1,150 @@
 import json
 import logging
 import random
+from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, Union
+from typing import Any, Dict, List, Union
 
+import yaml
 from constant import SEED_NODE_LIST
+from pydantic import BaseModel, Field, field_validator
 
-# 尝试导入 PyYAML，如果未安装则提示
-try:
-    import yaml
-except ImportError:
-    yaml = None
-
-# 1. 配置 Logging
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
 
+class ValueType(str, Enum):
+    """配置文件 value.type 允许的类型（受控、可无限扩展）"""
+
+    RANDOM_RANGE = "random_range"
+    RANDOM_CHOICE = "random_choice"
+    # 未来扩展只需在这里添加，例如：
+    # RANDOM_INT = "random_int"
+    # WEIGHTED_CHOICE = "weighted_choice"
+    # NORMAL_DISTRIBUTION = "normal_distribution"
+
+
+class WorkflowNodeConfig(BaseModel):
+    """单个节点的修改配置"""
+
+    class_type: str = Field(description="节点类型（字符串，无限制）")
+    parameter_name: str = Field(description="要修改的参数名", alias="item_name")
+    value: Any = Field(
+        description="""
+        支持格式：
+        - 直接值：42、3.14、"hello"、true
+        - 随机配置（必须包含 type 字段，且 type 必须在 ValueType 枚举中）：
+          {
+            "type": "random_range",
+            "min": 0.0,
+            "max": 100.0
+          }
+          {
+            "type": "random_choice",
+            "choices": ["a", "b", "c"]
+          }
+    """
+    )
+    node_index: int = Field(default=1, ge=1, description="第几个同类型节点（从1开始）")
+
+    @field_validator("value")
+    @classmethod
+    def validate_value_structure(cls, v: Any) -> Any:
+        if isinstance(v, dict) and "type" in v:
+            try:
+                value_type = ValueType(v["type"])
+            except ValueError as e:
+                raise ValueError(
+                    f"value.type 必须是以下之一: {', '.join(t.value for t in ValueType)}"
+                ) from e
+
+            # 可选：对每种 type 做更细致的结构校验（推荐保留，防止配置错误）
+            if value_type == ValueType.RANDOM_RANGE:
+                if "min" not in v or "max" not in v:
+                    raise ValueError("random_range 必须包含 min 和 max 字段")
+            elif value_type == ValueType.RANDOM_CHOICE:
+                if not isinstance(v.get("choices"), list) or len(v["choices"]) == 0:
+                    raise ValueError("random_choice 必须包含非空 choices 列表")
+
+        return v
+
+
+class RootConfig(BaseModel):
+    """配置文件完整结构校验"""
+
+    workflow_path: str = Field(description="工作流模板路径")
+    nodes: List[WorkflowNodeConfig] = Field(default=[], description="节点修改配置列表")
+
+
 class WorkflowManager:
     def __init__(self):
-        self.MAX_SEED = 2**32 - 1  # 最大种子值
+        self.MAX_SEED = 2**32 - 1
         self.seed_config_list = SEED_NODE_LIST if SEED_NODE_LIST else []
 
-        pass
-
     def _load_file_content(self, file_path: Path) -> Dict:
-        """读取 JSON 或 YAML 文件内容"""
         if not file_path.exists():
-            logger.error(f"文件不存在: {file_path}")
-            raise FileNotFoundError(f"File not found: {file_path}")
+            raise FileNotFoundError(f"文件不存在: {file_path}")
 
-        if file_path.suffix.lower() in [".yaml", ".yml"]:
+        suffix = file_path.suffix.lower()
+        content = file_path.read_text(encoding="utf-8")
+
+        if suffix in [".yaml", ".yml"]:
             if yaml is None:
-                logger.error(
-                    "检测到YAML文件，但未安装PyYAML库。请运行 `pip install pyyaml`"
-                )
-                raise ImportError("PyYAML is required for parsing yaml files.")
-            return yaml.safe_load(file_path.read_text(encoding="utf-8"))
-
-        elif file_path.suffix.lower() == ".json":
-            return json.loads(file_path.read_text(encoding="utf-8"))
-
+                raise ImportError("请安装 PyYAML: pip install pyyaml")
+            return yaml.safe_load(content)
+        elif suffix == ".json":
+            return json.loads(content)
         else:
-            logger.error("不支持的文件格式，仅支持 json 或 yaml")
-            raise ValueError("Unsupported file format")
+            raise ValueError("仅支持 .json / .yaml / .yml")
 
-    def _resolve_value(self, value_config: Any) -> Any:
-        """
-        解析配置中的值，处理 random_range 和 random_choice
-        如果值不是字典或者没有 type 字段，则直接返回原值
-        """
-        if not isinstance(value_config, dict) or "type" not in value_config:
-            return value_config
+    def _handle_random_range(self, config: dict) -> Any:
+        min_v = config.get("min", 0)
+        max_v = config.get("max", 1)
+        if isinstance(min_v, float) or isinstance(max_v, float):
+            return round(random.uniform(min_v, max_v), 6)
+        else:
+            return random.randint(min_v, max_v)
 
-        v_type = value_config.get("type")
+    def _handle_random_choice(self, config: dict) -> Any:
+        choices = config.get("choices", [])
+        return random.choice(choices) if choices else None
 
-        if v_type == "random_range":
-            min_v = value_config.get("min", 0)
-            max_v = value_config.get("max", 1)
-            # 判断是浮点数还是整数
-            if isinstance(min_v, float) or isinstance(max_v, float):
-                val = random.uniform(min_v, max_v)
-                # 可选：保留小数点后几位
-                return round(val, 4)
-            else:
-                return random.randint(min_v, max_v)
+    # 可无限升级的核心解析器（推荐扩展方式）
+    _VALUE_HANDLERS = {
+        ValueType.RANDOM_RANGE: _handle_random_range,
+        ValueType.RANDOM_CHOICE: _handle_random_choice,
+        # 未来扩展示例：
+        # ValueType.NORMAL_DISTRIBUTION: _handle_normal_distribution,
+    }
 
-        elif v_type == "random_choice":
-            choices = value_config.get("choices", [])
-            if not choices:
-                return None
-            return random.choice(choices)
+    def _resolve_value(self, raw_value: Any) -> Any:
+        """极简、可无限迭代升级的值解析器"""
+        # 不是带 type 的配置 → 直接返回（支持 42、"text"、true 等）
+        if not isinstance(raw_value, dict) or "type" not in raw_value:
+            return raw_value
 
-        return value_config
+        try:
+            v_type = ValueType(raw_value["type"])
+        except ValueError:
+            logger.warning(f"未知的 value.type: {raw_value['type']}，原样返回")
+            return raw_value
+
+        handler = self._VALUE_HANDLERS.get(v_type)
+        if handler:
+            return handler(self, raw_value)  # 传入 self 以便访问实例方法
+        else:
+            logger.warning(f"暂未实现对 {v_type.value} 的处理，原样返回配置")
+            return raw_value
 
     def modify_json_item(
-        self, data: Dict, class_type: str, item_name: str, new_value: Any, index: int
+        self,
+        data: Dict,
+        class_type: str,
+        parameter_name: str,
+        new_value: Any,
+        index: int,
     ) -> bool:
         """
         修改ComfyUI工作流JSON中指定class_type项目的值。
@@ -88,20 +155,17 @@ class WorkflowManager:
             if "class_type" in item and item["class_type"] == class_type:
                 found_count += 1
                 if found_count == index:
-                    if "inputs" in item and item_name in item["inputs"]:
-                        old_val = item["inputs"][item_name]
-                        item["inputs"][item_name] = new_value
+                    if "inputs" in item and parameter_name in item["inputs"]:
+                        old_val = item["inputs"][parameter_name]
+                        item["inputs"][parameter_name] = new_value
                         logger.info(
-                            f"修改节点[{class_type}] (第{index}个) 的 '{item_name}': {old_val} -> {new_value}"
+                            f"修改 [{class_type}] 第{index}个 '{parameter_name}': {old_val} → {new_value}"
                         )
                         return True
                     else:
-                        logger.warning(
-                            f"在第{index}个[{class_type}]节点中未找到参数 '{item_name}'，跳过修改。"
-                        )
+                        logger.warning(f"节点中未找到参数 '{parameter_name}'")
                         return False
-
-        logger.warning(f"未找到第{index}个 class_type 为 '{class_type}' 的节点。")
+        logger.warning(f"未找到第{index}个 {class_type} 节点")
         return False
 
     def remove_preview_nodes(self, data: dict) -> dict:
@@ -115,68 +179,45 @@ class WorkflowManager:
             dict: 移除预览节点后的字典数据
         """
         # 收集所有需要移除的预览节点的键
-        previews = []
-        for number, info in data.items():
-            if info.get("class_type") == "PreviewImage":
-                previews.append(number)
-
-        # 移除预览节点
-        for number in previews:
-            data.pop(number)
-
-        # 返回处理后的数据
+        previews = [k for k, v in data.items() if v.get("class_type") == "PreviewImage"]
+        for k in previews:
+            data.pop(k)
         return data
 
-    def _randomize_seed_nodes(self, workflow_data: Dict, seed_config_list: list[Dict]):
-        """
-        遍历工作流，自动随机化指定的种子节点。
-
-        :param workflow_data: 原始工作流数据
-        :param seed_config_list: 种子节点配置列表，例如:
-               [{"class_type": "KSampler", "item_name": "seed"}, ...]
-        """
-        if not seed_config_list:
+    def _randomize_seed_nodes(self, workflow_data: Dict):
+        if not self.seed_config_list:
             return
 
         count = 0
-        # 遍历工作流中的每一个节点
         for node_id, node_info in workflow_data.items():
-            if "class_type" not in node_info:
+            node_class = node_info.get("class_type")
+            if not node_class:
                 continue
 
-            node_class = node_info["class_type"]
-
-            # 检查当前节点是否在种子配置列表中
-            # 使用 next 查找匹配的配置，如果找不到返回 None
-            matched_config = next(
-                (item for item in seed_config_list if item["class_type"] == node_class),
+            matched = next(
+                (c for c in self.seed_config_list if c["class_type"] == node_class),
                 None,
             )
+            if not matched:
+                continue
 
-            if matched_config:
-                param_name = matched_config.get("item_name", "seed")  # 默认为 "seed"
+            param_name = matched.get("parameter_name", "seed")
+            if param_name not in node_info.get("inputs", {}):
+                continue
 
-                # 确保该节点有对应的输入参数并且是数值类型
-                if (
-                    "inputs" in node_info
-                    and param_name in node_info["inputs"]
-                    and isinstance(
-                        node_info["inputs"][param_name], (int, float, complex)
-                    )
-                ):
-                    # 生成随机种子
-                    new_seed = random.randint(0, self.MAX_SEED)
-                    old_seed = node_info["inputs"][param_name]
-                    node_info["inputs"][param_name] = new_seed
-                    count += 1
-                    logger.info(
-                        f"随机化种子节点 [{node_class}] (ID:{node_id}): '{param_name}' {old_seed} -> {new_seed}"
-                    )
+            current = node_info["inputs"][param_name]
+            if not isinstance(current, (int, float)):
+                continue
 
-        if count > 0:
-            logger.info(f"共随机化了 {count} 个种子节点。")
-        else:
-            logger.info("未发现需要随机化的种子节点。")
+            new_seed = random.randint(0, self.MAX_SEED)
+            node_info["inputs"][param_name] = new_seed
+            count += 1
+            logger.info(
+                f"自动随机化种子 [{node_class}] (ID:{node_id}) {param_name}: {current} → {new_seed}"
+            )
+
+        if count:
+            logger.info(f"自动随机化完成，共 {count} 个种子节点")
 
     def get_workflow(
         self,
@@ -184,73 +225,44 @@ class WorkflowManager:
         random_init: bool = True,
         remove_previews: bool = True,
     ) -> Dict:
-        """
-        核心函数：读取配置，加载原始工作流，根据 random_init 决定是否修改。
-        """
         config_path = Path(config_file_path)
 
-        # 1. 读取配置文件 (Config)
-        logger.info(f"正在加载配置文件: {config_path}")
-        config_data = self._load_file_content(config_path)
+        logger.info(f"加载配置文件: {config_path}")
+        config_raw = self._load_file_content(config_path)
 
-        # 检查配置文件结构
-        if "workflow_path" not in config_data:
-            error_msg = "配置文件中缺少 'workflow_path' 字段，无法找到原始工作流模板。"
-            logger.error(error_msg)
-            raise ValueError(error_msg)
+        try:
+            config = RootConfig.model_validate(config_raw)
+        except Exception as e:
+            logger.error(f"配置文件校验失败: {e}")
+            raise
 
-        # 2. 解析原始工作流路径
-        # 处理相对路径：假设 workflow_path 是相对于 config 文件的
-        raw_wf_path_str = config_data["workflow_path"]
-        workflow_path = Path(raw_wf_path_str)
-
+        workflow_path = Path(config.workflow_path)
         if not workflow_path.is_absolute():
-            # 如果是相对路径，则将其解析为相对于 config_file 所在的目录
-            workflow_path = config_path.parent / workflow_path
+            workflow_path = (config_path.parent / workflow_path).resolve()
 
-        # 3. 读取原始工作流 (Template)
-        logger.info(f"正在加载原始工作流模板: {workflow_path}")
+        logger.info(f"加载工作流模板: {workflow_path}")
         workflow_data = self._load_file_content(workflow_path)
 
-        # 4. 可选：移除预览节点
         if remove_previews:
-            logger.info("正在移除预览节点...")
             workflow_data = self.remove_preview_nodes(workflow_data)
 
-        # 5. 根据 random_init 决定是否修改
-        seed_nodes_config = self.seed_config_list if self.seed_config_list else []
-        if seed_nodes_config:
-            self._randomize_seed_nodes(workflow_data, seed_nodes_config)
+        self._randomize_seed_nodes(workflow_data)
 
-        if not random_init:
-            logger.info("random_init=False，直接返回原始工作流。")
+        if not random_init or not config.nodes:
             return workflow_data
 
-        logger.info("random_init=True，开始根据配置修改工作流参数...")
-        nodes_config = config_data.get("nodes", [])
-
-        for node_cfg in nodes_config:
-            class_type = node_cfg.get("class_type")
-            param_name = node_cfg.get("item_name")
-            raw_value = node_cfg.get("value")
-            node_index = node_cfg.get("node_index", 1)  # 默认为找到的第一个
-
-            # 解析可能存在的随机值配置
-            final_value = self._resolve_value(raw_value)
-
-            # 执行修改
-            success = self.modify_json_item(
+        logger.info(f"应用 {len(config.nodes)} 条手动配置...")
+        for node_cfg in config.nodes:
+            final_value = self._resolve_value(node_cfg.value)
+            self.modify_json_item(
                 data=workflow_data,
-                class_type=class_type,
-                item_name=param_name,
+                class_type=node_cfg.class_type,
+                parameter_name=node_cfg.parameter_name,
                 new_value=final_value,
-                index=node_index,
+                index=node_cfg.node_index,
             )
 
-            if not success:
-                logger.warning(f"配置项修改失败: {node_cfg}")
-
-        logger.info("工作流修改完成。")
+        logger.info("工作流处理完成")
         return workflow_data
 
 
