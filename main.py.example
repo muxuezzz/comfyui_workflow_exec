@@ -1,89 +1,134 @@
 import logging
-from typing import Dict, List, Any, Optional
 from pathlib import Path
+from typing import Dict, List, Optional
 
-from workflow_run import WorkflowRunner
+from comfyui_client.comfyui_webscoket import ComfyUIWebSocketClient
+from workflow_manager import WorkflowRunner
 
 # 配置日志
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s"
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
+
 
 def preprocess_callback():
     """前处理函数示例：每次工作流调用前执行"""
     logger.info("执行自定义前处理逻辑...")
-    # 可以在这里添加：
-    # - 检查资源可用性
-    # - 清理临时文件
-    # - 记录开始时间等
+    # 可扩展逻辑：
+    # - 检查GPU/CPU资源占用
+    # - 清理上次执行的临时文件
+    # - 记录任务开始时间戳
+    # - 校验输入配置合法性
     pass
+
 
 def postprocess_callback(output_images: Dict[str, List[bytes]]) -> Dict[str, List[str]]:
     """后处理函数示例：每次工作流调用后执行"""
     logger.info("执行自定义后处理逻辑...")
-    # 保存图片并返回保存路径
+    # 保存图片并返回保存路径（核心后处理逻辑）
     saved_paths = {}
     output_dir = Path("output_images")
     output_dir.mkdir(exist_ok=True)
-    
+
     for node_id, images in output_images.items():
         node_paths = []
         for i, image_data in enumerate(images):
-            filename = f"node_{node_id}_image_{i}.png"
+            filename = f"node_{node_id}_image_{i}_{Path(__file__).stem}.png"
             filepath = output_dir / filename
             with open(filepath, "wb") as f:
                 f.write(image_data)
             node_paths.append(str(filepath))
-            logger.info(f"图片保存至: {filepath}")
+            logger.info(f"图片已保存至: {filepath}")
         saved_paths[node_id] = node_paths
-    
+
     return saved_paths
 
+
 def workflow_modify_callback(workflow_data: Dict) -> Dict:
-    """工作流修改回调函数示例：在执行前修改工作流"""
-    logger.info("执行自定义工作流修改...")
-    # 示例：修改KSampler节点的steps参数
+    """工作流修改回调函数示例：在执行前动态修改工作流参数"""
+    logger.info("执行自定义工作流修改逻辑...")
+    # 示例1：修改KSampler节点的采样步数
     for node_id, node_info in workflow_data.items():
         if node_info.get("class_type") == "KSampler":
-            # 修改步数为30
             if "inputs" in node_info:
+                # 可根据外部配置动态调整，此处示例固定为30步
                 node_info["inputs"]["steps"] = 30
-                logger.info(f"修改节点 {node_id} 的steps参数为30")
-    
-    # 可以添加更多自定义修改逻辑
+                logger.info(f"节点 {node_id} (KSampler) 步数已修改为30")
+
+    # 示例2：修改ImageSave节点的保存格式（如果存在）
+    for node_id, node_info in workflow_data.items():
+        if node_info.get("class_type") == "ImageSave":
+            if "inputs" in node_info:
+                node_info["inputs"]["format"] = "PNG"
+                logger.info(f"节点 {node_id} (ImageSave) 格式已设置为PNG")
+
     return workflow_data
 
-def main():
-    # 配置文件路径
-    config_file = "testworkflowconfig/config/my_config.json"
-    
-    # 初始化工作流运行器
-    runner = WorkflowRunner(
-        config_path=config_file,
-        server_address="127.0.0.1:8188"  # ComfyUI服务器地址
-    )
-    
-    # 设置回调函数
-    runner.set_preprocess_callback(preprocess_callback)
-    runner.set_postprocess_callback(postprocess_callback)
-    runner.set_workflow_modify_callback(workflow_modify_callback)
-    
-    try:
-        # 执行工作流
-        logger.info("开始执行工作流...")
-        results = runner.run(
-            random_init=True,  # 启用随机初始化
-            remove_previews=True  # 移除预览节点
-        )
-        
-        logger.info("工作流执行完成，结果：")
-        for node_id, paths in results.items():
-            logger.info(f"节点 {node_id} 生成的图片: {paths}")
-            
-    except Exception as e:
-        logger.error(f"工作流执行过程中发生错误: {str(e)}")
 
+def run_workflow(
+    config_file: str = "testworkflowconfig/config/my_config.json",
+    comfyui_client: ComfyUIWebSocketClient = ComfyUIWebSocketClient(
+        production_mode=True
+    ),
+    random_init: bool = True,
+    remove_previews: bool = True,
+) -> Optional[Dict[str, List[str]]]:
+    """
+    可复用的工作流执行函数（替代原main函数，支持循环/队列调用）
+
+    参数说明：
+    - config_file: 工作流配置文件路径
+    - server_address: ComfyUI WebSocket服务器地址
+    - random_init: 是否启用随机值初始化工作流
+    - remove_previews: 是否移除预览节点以提升执行效率
+
+    返回值：
+    - 后处理后的结果（如图片保存路径字典），执行失败返回None
+    """
+    try:
+        # 初始化工作流运行器
+        runner = WorkflowRunner(config_path=config_file, comfyui_client=comfyui_client)
+
+        # 绑定回调函数（可根据场景动态替换不同回调）
+        runner.set_preprocess_callback(preprocess_callback)
+        runner.set_postprocess_callback(postprocess_callback)
+        runner.set_workflow_modify_callback(workflow_modify_callback)
+
+        # 执行工作流核心逻辑
+        logger.info(f"开始执行工作流，配置文件：{config_file}")
+        results = runner.run(random_init=random_init, remove_previews=remove_previews)
+
+        logger.info(f"工作流执行完成，配置文件：{config_file}")
+        return results
+
+    except Exception as e:
+        logger.error(
+            f"工作流执行失败（配置文件：{config_file}）: {str(e)}", exc_info=True
+        )
+        return None
+
+
+# 示例：循环执行多个工作流任务（模拟队列/循环场景）
 if __name__ == "__main__":
-    main()
+    # 模拟任务队列：多个配置文件待执行
+    workflow_tasks = [
+        {"config_file": "testworkflowconfig/config/task1.json"},
+        {"config_file": "testworkflowconfig/config/task2.json"},
+        {"config_file": "testworkflowconfig/config/task3.json"},
+    ]
+
+    # 初始化comfyui客户端
+    with ComfyUIWebSocketClient(
+        server_address="127.0.0.1:8188", production_mode=True
+    ) as comfyui_client:
+        # 循环执行队列中的任务
+        for idx, task in enumerate(workflow_tasks, 1):
+            logger.info(f"\n===== 执行第 {idx} 个任务 =====")
+            task_result = run_workflow(
+                config_file=task["config_file"], comfyui_client=comfyui_client
+            )
+            if task_result:
+                logger.info(f"第 {idx} 个任务结果：{task_result}")
+            else:
+                logger.warning(f"第 {idx} 个任务执行失败，跳过后续处理")

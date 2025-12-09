@@ -279,14 +279,16 @@ if __name__ == "__main__":
         "12": {"class_type": "Class3", "inputs": {"param3": "default"}},
         "14": {"class_type": "KSampler", "inputs": {"seed": 12312321}},
     }
-    Path("workflow_template.json").write_text(
+    config_Path = Path(__file__).parent.parent / "config"
+
+    Path(config_Path / "workflow_template.json").write_text(
         json.dumps(template_workflow, indent=2, ensure_ascii=False)
     )
 
     # 2. 创建包含 workflow_path 的新配置文件 (config.json)
     # 注意：这里增加了 "workflow_path" 字段
     config_content = {
-        "workflow_path": "./workflow_template.json",
+        "workflow_path": str(Path(config_Path / "workflow_template.json")),
         "nodes": [
             {
                 "class_type": "Class1",
@@ -311,15 +313,19 @@ if __name__ == "__main__":
             },
         ],
     }
-    Path("my_config.json").write_text(json.dumps(config_content, indent=2))
+    Path(config_Path / "my_config.json").write_text(
+        json.dumps(config_content, indent=2)
+    )
+
+    my_config_path = config_Path / "my_config.json"
 
     # 3. 调用函数
     manager = WorkflowManager()
 
     print("\n--- 测试 1: random_init = True ---")
-    new_workflow = manager.get_workflow("my_config.json", random_init=True)
+    new_workflow = manager.get_workflow(my_config_path, random_init=True)
     print("生成的 workflow 片段:", json.dumps(new_workflow, indent=2))
 
     print("\n--- 测试 2: random_init = False ---")
-    original_workflow = manager.get_workflow("my_config.json", random_init=False)
+    original_workflow = manager.get_workflow(my_config_path, random_init=False)
     # 应该保持原样

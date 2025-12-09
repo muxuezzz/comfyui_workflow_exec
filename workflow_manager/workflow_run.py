@@ -66,8 +66,7 @@ class WorkflowRunner:
 
             # 4. 工作流执行
             logger.info("连接到ComfyUI服务器并执行工作流...")
-            with self.client:
-                output_images = self.client.execute_workflow(workflow_data)
+            output_images = self.client.execute_workflow(workflow_data)
 
             # 5. 后处理
             logger.info("开始后处理...")

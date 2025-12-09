@@ -1,5 +1,5 @@
 {
-  "workflow_path": "./workflow_template.json",
+  "workflow_path": "D:\\\u8fc5\u96f7\u4e0b\u8f7d\\comfyui_image_batchgene\\testworkflowconfig\\config\\workflow_template.json",
   "nodes": [
     {
       "class_type": "Class1",

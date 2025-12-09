@@ -62,6 +62,7 @@ class ComfyUIWebSocketClient:
         server_address: str = "127.0.0.1:8188",
         timeout: int = 30,
         production_mode: bool = False,
+        client_id=None,
     ):
         """
         初始化客户端
@@ -69,10 +70,11 @@ class ComfyUIWebSocketClient:
         Args:
             server_address: ComfyUI 服务地址，例如 "127.0.0.1:8188" 或 "mydomain.com:8188"
             timeout: HTTP 与 WebSocket 超时时间（秒）
+            client_id: 自定义 WebSocket 客户端 ID，默认随机生成 UUID
             production_mode: 是否启用生产模式（强烈建议批量任务时开启）
         """
         self.ws: Optional[websocket.WebSocket] = None
-        self.client_id = str(uuid.uuid4())
+        self.client_id = str(uuid.uuid4()) if client_id is None else client_id
         self.server_address = server_address
         self.timeout = timeout
         self.production_mode = production_mode  # 生产环境模式开关
