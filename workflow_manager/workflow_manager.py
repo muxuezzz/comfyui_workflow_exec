@@ -314,7 +314,7 @@ if __name__ == "__main__":
         ],
     }
     Path(config_Path / "my_config.json").write_text(
-        json.dumps(config_content, indent=2)
+        json.dumps(config_content, indent=2, ensure_ascii=False)
     )
 
     my_config_path = config_Path / "my_config.json"
@@ -324,7 +324,9 @@ if __name__ == "__main__":
 
     print("\n--- 测试 1: random_init = True ---")
     new_workflow = manager.get_workflow(my_config_path, random_init=True)
-    print("生成的 workflow 片段:", json.dumps(new_workflow, indent=2))
+    print(
+        "生成的 workflow 片段:", json.dumps(new_workflow, indent=2, ensure_ascii=False)
+    )
 
     print("\n--- 测试 2: random_init = False ---")
     original_workflow = manager.get_workflow(my_config_path, random_init=False)
