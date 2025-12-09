@@ -8,6 +8,7 @@ from typing import Any, Callable, Dict, List, Optional
 import requests
 import websocket
 
+from ..workflow_manager.exceptions import WorkflowConnectionError
 from .message_config import BinaryMessageType, JsonMessageType, MessageHandlingPolicy
 
 # 配置日志
@@ -88,15 +89,20 @@ class ComfyUIWebSocketClient:
         self.base_url = f"http://{self.server_address}"
         self.logger = logger  # 实例化logger
 
-    def connect(self):
-        """连接到WebSocket服务器"""
-        if self.ws and self.ws.connected:
-            return
 
-        ws_url = f"ws://{self.server_address}/ws?clientId={self.client_id}"
-        self.logger.info(f"连接到WebSocket服务器: {ws_url}")
+def connect(self):
+    if self.ws and self.ws.connected:
+        return
+
+    ws_url = f"ws://{self.server_address}/ws?clientId={self.client_id}"
+    self.logger.info(f"连接到WebSocket服务器: {ws_url}")
+    try:
         self.ws = websocket.WebSocket()
         self.ws.connect(ws_url, timeout=self.timeout)
+    except websocket.WebSocketException as e:
+        raise WorkflowConnectionError(f"WebSocket连接失败: {str(e)}") from e
+    except Exception as e:
+        raise WorkflowConnectionError(f"连接建立异常: {str(e)}") from e
 
     def get_queue_info(self) -> Dict[str, Any]:
         """获取队列状态"""

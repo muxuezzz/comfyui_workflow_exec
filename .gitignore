@@ -1,3 +1,15 @@
 __pycache__
 tmp/
 workflow_manager/*.json
+/config/*.json
+/config/*.yaml
+/config/*.yml
+!config/workflow_template.json
+!config/config.yaml.example
+!config/config.json.example
+
+/workflows/*.json
+!workflows/workflow_template.json
+
+# 输出文件
+/output_images/

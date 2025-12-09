@@ -2,7 +2,7 @@ import logging
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from comfyui_client.comfyui_webscoket import ComfyUIWebSocketClient
+from comfyui_client.comfyui_websocket import ComfyUIWebSocketClient
 from workflow_manager import WorkflowRunner
 
 # 配置日志
