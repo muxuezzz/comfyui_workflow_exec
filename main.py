@@ -2,6 +2,7 @@ import logging
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from comfyui_client.comfyui_simplclient import ComfyUISimpleClient
 from comfyui_client.comfyui_websocket import ComfyUIWebSocketClient
 from workflow_manager import WorkflowRunner
 from workflow_manager.exceptions import ConfigValidationError, WorkflowConnectionError
@@ -69,9 +70,8 @@ def workflow_modify_callback(workflow_data: Dict) -> Dict:
 
 def run_workflow(
     config_file: str = "testworkflowconfig/config/my_config.json",
-    comfyui_client: ComfyUIWebSocketClient = ComfyUIWebSocketClient(
-        production_mode=True
-    ),
+    comfyui_client: ComfyUIWebSocketClient
+    | ComfyUISimpleClient = ComfyUIWebSocketClient(production_mode=True),
     random_init: bool = True,
     remove_previews: bool = True,
 ) -> Optional[Dict[str, List[str]]]:

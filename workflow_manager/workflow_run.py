@@ -2,7 +2,8 @@ import logging
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
-from ..comfyui_client.comfyui_webscoket import ComfyUIWebSocketClient
+from ..comfyui_client.comfyui_simplclient import ComfyUISimpleClient
+from ..comfyui_client.comfyui_websocket import ComfyUIWebSocketClient
 from .workflow_manager import WorkflowManager
 
 # 配置日志
@@ -66,13 +67,17 @@ class WorkflowRunner:
 
             # 4. 工作流执行
             logger.info("连接到ComfyUI服务器并执行工作流...")
-            output_images = self.client.execute_workflow(workflow_data)
+            if isinstance(self.client, ComfyUIWebSocketClient):
+                output_images = self.client.execute_workflow(workflow_data)
+            elif isinstance(self.client, ComfyUISimpleClient):
+                prompt_id = self.client.queue_prompt(workflow_data)
 
             # 5. 后处理
             logger.info("开始后处理...")
             if self.postprocess_callback:
-                return self.postprocess_callback(output_images)
-            return output_images
+                # return self.postprocess_callback(output_images)
+                self.postprocess_callback()
+            return output_images if output_images else prompt_id
 
         except Exception as e:
             logger.error(f"工作流执行失败: {str(e)}", exc_info=True)

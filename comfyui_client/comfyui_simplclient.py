@@ -1,48 +1,98 @@
-"""ComfyUI客户端，处理与ComfyUI服务的通信"""
-
-import json
+import logging
 import time
-from typing import Any, Dict
+import uuid
+from typing import Any, Dict, Optional
 
 import requests
 
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
+
 
 class ComfyUISimpleClient:
-    """ComfyUI客户端类"""
+    """
+    简易版ComfyUI客户端，仅负责发送工作流请求，不处理返回信息和监控执行状态
+    适用于只需要提交任务而无需等待结果的场景
+    """
 
     def __init__(
         self,
         server_address: str = "127.0.0.1:8188",
         timeout: int = 30,
+        client_id: Optional[str] = None,
     ):
         self.server_address = server_address
         self.timeout = timeout
-        # 创建 requests 会话，启用连接池
+        self.client_id = client_id or str(uuid.uuid4())
         self.base_url = f"http://{self.server_address}"
+        self.session = requests.Session()  # 复用连接池提升效率
 
-    def queue_prompt(self, prompt_workflow: Dict[str, Any]) -> str:
+    def queue_prompt(self, prompt: Dict, wait_queue=True) -> str:
         """
-        将工作流加入队列
+        提交工作流到ComfyUI队列
 
         Args:
-            prompt_workflow: 工作流配置字典
+            prompt: 工作流字典数据
 
         Returns:
-            响应内容
+            生成的任务ID (prompt_id)
         """
-        p = {"prompt": prompt_workflow}
-        data = json.dumps(p).encode("utf-8")
+        prompt_id = str(uuid.uuid4())
+        payload = {
+            "prompt": prompt,
+            "client_id": self.client_id,
+            "prompt_id": prompt_id,
+        }
+
+        if wait_queue:
+            self.wait_for_queue_empty()
 
         try:
-            response = requests.post(
-                f"{self.base_url}/prompt",
-                data=data,
-                headers={"Content-Type": "application/json"},
+            response = self.session.post(
+                f"{self.base_url}/prompt", json=payload, timeout=self.timeout
             )
             response.raise_for_status()
-            return response.content.decode("utf-8")
-        except requests.RequestException as e:
-            raise ConnectionError(f"Failed to queue prompt: {e}")
+            logger.info(f"工作流已提交，任务ID: {prompt_id}")
+            return prompt_id
+        except requests.exceptions.RequestException as e:
+            logger.error(f"提交工作流失败: {str(e)}")
+            raise
+
+    def wait_for_queue_empty(
+        self,
+        check_interval: float = 1.0,
+        max_wait: Optional[float] = None,
+        min_queue_num: int = 3,
+    ):
+        """等待队列空闲（可选）"""
+        start_time = time.time()
+        logger.info(f"等待队列任务数 < {min_queue_num}...")
+
+        while True:
+            try:
+                response = self.session.get(
+                    f"{self.base_url}/queue", timeout=self.timeout
+                )
+                queue_info = response.json()
+
+                running = len(queue_info.get("queue_running", []))
+                pending = len(queue_info.get("queue_pending", []))
+                total = running + pending
+
+                if total < min_queue_num:
+                    logger.info(f"队列已空闲（总任务数: {total}）")
+                    break
+
+                if max_wait and (time.time() - start_time) > max_wait:
+                    raise TimeoutError(f"等待队列超时（{max_wait}秒）")
+
+                time.sleep(check_interval)
+
+            except Exception as e:
+                logger.warning(f"获取队列状态失败: {e}，将重试...")
+                time.sleep(check_interval)
 
     def get_prompt_status(self) -> Dict[str, Any]:
         """
@@ -71,32 +121,6 @@ class ComfyUISimpleClient:
             return response.json()
         except requests.RequestException as e:
             raise ConnectionError(f"Failed to get queue status: {e}")
-
-    def wait_for_completion(self, timeout: int = 300, check_interval: int = 1) -> bool:
-        """
-        等待工作流执行完成
-
-        Args:
-            timeout: 超时时间（秒）
-            check_interval: 检查间隔（秒）
-
-        Returns:
-            是否成功完成
-        """
-        start_time = time.time()
-
-        while time.time() - start_time < timeout:
-            queue_status = self.get_queue_status()
-
-            # 检查队列是否为空
-            if not queue_status.get("queue_running") and not queue_status.get(
-                "queue_pending"
-            ):
-                return True
-
-            time.sleep(check_interval)
-
-        raise TimeoutError(f"Workflow did not complete within {timeout} seconds")
 
     def test_connection(self) -> bool:
         """
@@ -129,3 +153,10 @@ class ComfyUISimpleClient:
             }
         except ConnectionError as e:
             return {"connection_healthy": False, "error": str(e)}
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.session.close()
+        logger.info("连接已关闭")
