@@ -103,7 +103,7 @@ class ComfyUIWebSocketClient:
         except Exception as e:
             raise WorkflowConnectionError(f"连接建立异常: {str(e)}") from e
 
-    def get_queue_info(self) -> Dict[str, Any]:
+    def get_queue_info(self) -> Dict[str, List[Dict[str, Any]]]:
         """获取队列状态"""
         try:
             response = self.session.get(f"{self.base_url}/queue", timeout=self.timeout)

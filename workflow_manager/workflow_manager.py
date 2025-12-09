@@ -5,9 +5,10 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Union
 
-import yaml
 from constant import SEED_NODE_LIST
 from pydantic import BaseModel, Field, field_validator
+
+from ..utils.file_utils import load_file_content
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -82,22 +83,6 @@ class WorkflowManager:
     def __init__(self):
         self.MAX_SEED = 2**32 - 1
         self.seed_config_list = SEED_NODE_LIST if SEED_NODE_LIST else []
-
-    def _load_file_content(self, file_path: Path) -> Dict:
-        if not file_path.exists():
-            raise FileNotFoundError(f"文件不存在: {file_path}")
-
-        suffix = file_path.suffix.lower()
-        content = file_path.read_text(encoding="utf-8")
-
-        if suffix in [".yaml", ".yml"]:
-            if yaml is None:
-                raise ImportError("请安装 PyYAML: pip install pyyaml")
-            return yaml.safe_load(content)
-        elif suffix == ".json":
-            return json.loads(content)
-        else:
-            raise ValueError("仅支持 .json / .yaml / .yml")
 
     def _handle_random_range(self, config: dict) -> Any:
         min_v = config.get("min", 0)
@@ -228,7 +213,7 @@ class WorkflowManager:
         config_path = Path(config_file_path)
 
         logger.info(f"加载配置文件: {config_path}")
-        config_raw = self._load_file_content(config_path)
+        config_raw = load_file_content(config_path)
 
         try:
             config = RootConfig.model_validate(config_raw)
@@ -241,7 +226,7 @@ class WorkflowManager:
             workflow_path = (config_path.parent / workflow_path).resolve()
 
         logger.info(f"加载工作流模板: {workflow_path}")
-        workflow_data = self._load_file_content(workflow_path)
+        workflow_data = load_file_content(workflow_path)
 
         if remove_previews:
             workflow_data = self.remove_preview_nodes(workflow_data)

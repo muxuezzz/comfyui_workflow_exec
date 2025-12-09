@@ -4,6 +4,7 @@ from typing import Dict, List, Optional
 
 from comfyui_client.comfyui_websocket import ComfyUIWebSocketClient
 from workflow_manager import WorkflowRunner
+from workflow_manager.exceptions import ConfigValidationError, WorkflowConnectionError
 
 # 配置日志
 logging.basicConfig(
@@ -102,7 +103,7 @@ def run_workflow(
         logger.info(f"工作流执行完成，配置文件：{config_file}")
         return results
 
-    except Exception as e:
+    except (ConfigValidationError, WorkflowConnectionError) as e:
         logger.error(
             f"工作流执行失败（配置文件：{config_file}）: {str(e)}", exc_info=True
         )
