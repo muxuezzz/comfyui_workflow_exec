@@ -5,7 +5,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Union
 
-from constant import SEED_NODE_LIST
+from constant import SEED_NODE_LIST, SEED_PARA_LIST
 from pydantic import BaseModel, Field, field_validator
 
 from ..utils.file_utils import load_file_content
@@ -81,8 +81,9 @@ class RootConfig(BaseModel):
 
 class WorkflowManager:
     def __init__(self):
-        self.MAX_SEED = 2**32 - 1
+        self.MAX_SEED = 4294967295
         self.seed_config_list = SEED_NODE_LIST if SEED_NODE_LIST else []
+        self.seed_seedpara_list = SEED_PARA_LIST if SEED_PARA_LIST else []
 
     def _handle_random_range(self, config: dict) -> Any:
         min_v = config.get("min", 0)
@@ -169,24 +170,60 @@ class WorkflowManager:
             data.pop(k)
         return data
 
-    def _randomize_seed_nodes(self, workflow_data: Dict):
+    def _randomize_seed_nodes(self, workflow_data: Dict, strict: bool = False):
+        """
+        随机化种子节点值
+
+        Args:
+            workflow_data: 工作流数据字典
+            strict: 严格模式开关，开启后仅根据parameter_name是否在seed_seedpara_list中判断是否修改
+        """
         if not self.seed_config_list:
             return
 
         count = 0
         for node_id, node_info in workflow_data.items():
-            node_class = node_info.get("class_type")
-            if not node_class:
+            # 严格模式下跳过node_class检查，非严格模式保留原有node_class匹配逻辑
+            if not strict:
+                node_class = node_info.get("class_type")
+                if not node_class:
+                    continue
+
+                matched = next(
+                    (c for c in self.seed_config_list if c["class_type"] == node_class),
+                    None,
+                )
+                if not matched:
+                    continue
+
+                param_name = matched.get("parameter_name", "seed")
+            else:
+                # 严格模式：遍历seed_config_list获取所有parameter_name，检查是否在seed_seedpara_list中
+                for config in self.seed_config_list:
+                    param_name = config.get("parameter_name", "seed")
+                    # 仅当参数名在指定列表中时才处理
+                    if param_name not in self.seed_seedpara_list:
+                        continue
+
+                    # 检查参数是否存在于节点输入中
+                    if param_name not in node_info.get("inputs", {}):
+                        continue
+
+                    current = node_info["inputs"][param_name]
+                    if not isinstance(current, (int, float)):
+                        continue
+
+                    # 生成新种子并修改
+                    new_seed = random.randint(0, self.MAX_SEED)
+                    node_info["inputs"][param_name] = new_seed
+                    count += 1
+                    logger.info(
+                        f"自动随机化种子 [严格模式] (ID:{node_id}) {param_name}: {current} → {new_seed}"
+                    )
+                # 严格模式下当前节点处理完成，继续下一个节点
                 continue
 
-            matched = next(
-                (c for c in self.seed_config_list if c["class_type"] == node_class),
-                None,
-            )
-            if not matched:
-                continue
-
-            param_name = matched.get("parameter_name", "seed")
+            # 非严格模式的原有参数检查逻辑
             if param_name not in node_info.get("inputs", {}):
                 continue
 
