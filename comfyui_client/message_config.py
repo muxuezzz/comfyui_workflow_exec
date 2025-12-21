@@ -1,4 +1,9 @@
 from enum import Enum
+from typing import Optional, Type
+
+from pydantic import BaseModel
+
+from config.comfy_schema import APIHistoryEntryStatus, WSExecutingData
 
 
 class BinaryMessageType(Enum):
@@ -23,17 +28,13 @@ class JsonMessageType(Enum):
     EXECUTION_INTERRUPTED = "execution_interrupted"
     EXECUTION_SUCCESS = "execution_success"
 
-
-class MessageHandlingPolicy(Enum):
-    """消息处理策略枚举"""
-
-    # 生产环境：只处理关键消息
-    PRODUCTION = [
-        JsonMessageType.EXECUTION_ERROR,
-        JsonMessageType.EXECUTION_INTERRUPTED,
-        JsonMessageType.EXECUTION_SUCCESS,
-        JsonMessageType.EXECUTING,
-    ]
-
-    # 开发环境：处理所有消息
-    DEVELOPMENT = list(JsonMessageType)
+    # 使用类型注解定义消息数据结构的类型
+    @staticmethod
+    def get_data_model(msg_type: "JsonMessageType") -> Optional[Type[BaseModel]]:
+        """获取对应消息类型的数据模型"""
+        mapping = {
+            JsonMessageType.EXECUTING: WSExecutingData,
+            JsonMessageType.STATUS: APIHistoryEntryStatus,
+            # 可以继续添加其他映射
+        }
+        return mapping.get(msg_type)

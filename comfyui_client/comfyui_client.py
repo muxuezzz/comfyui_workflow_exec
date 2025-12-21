@@ -1,9 +1,17 @@
 import logging
 import time
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 import requests
+
+from config.comfy_schema import (
+    APIHistory,
+    APIQueueInfo,
+    APIWorkflow,
+    APIWorkflowTicket,
+    PromptID,
+)
 
 # 配置日志
 logging.basicConfig(
@@ -53,12 +61,12 @@ class ComfyUIClientBase:
         self.base_url = f"http://{self.server_address}"
         self.logger = logger
 
-    def get_queue_info(self) -> Dict[str, List[Dict[str, Any]]]:
+    def get_queue_info(self) -> APIQueueInfo:
         """获取队列状态"""
         try:
             response = self.session.get(f"{self.base_url}/queue", timeout=self.timeout)
             response.raise_for_status()
-            return response.json()
+            return APIQueueInfo(**response.json())  # 使用Pydantic验证
         except requests.exceptions.RequestException as e:
             raise ConnectionError(f"获取队列状态失败: {e}") from e
 
@@ -116,13 +124,13 @@ class ComfyUIClientBase:
 
     def queue_prompt(
         self,
-        prompt: Dict[str, Any],
-        prompt_id: Optional[str] = None,
+        prompt: APIWorkflow,  # 使用类型化的workflow
+        prompt_id: Optional[PromptID] = None,
         wait_for_queue: bool = False,
         check_interval: float = 1.0,
         max_wait: Optional[float] = None,
         min_queue_num: int = 3,
-    ) -> str:
+    ) -> APIWorkflowTicket:  # 返回类型化的响应
         """
         提交工作流到执行队列
 
@@ -144,7 +152,7 @@ class ComfyUIClientBase:
             self.wait_for_queue_empty(check_interval, max_wait, min_queue_num)
 
         payload = {
-            "prompt": prompt,
+            "prompt": prompt.model_dump(by_alias=True),
             "client_id": self.client_id,
             "prompt_id": prompt_id,
         }
@@ -157,19 +165,21 @@ class ComfyUIClientBase:
                 timeout=self.timeout,
             )
             response.raise_for_status()
-            self.logger.info(f"工作流已提交，任务ID: {prompt_id}")
-            return prompt_id
+            return APIWorkflowTicket(**response.json())  # 验证响应
+            # self.logger.info(f"工作流已提交，任务ID: {prompt_id}")
+            # return prompt_id
+
         except requests.exceptions.RequestException as e:
             raise ConnectionError(f"提交prompt失败: {e}") from e
 
-    def get_history(self, prompt_id: str) -> Dict[str, Any]:
+    def get_history(self, prompt_id: PromptID) -> APIHistory:
         """获取执行历史"""
         try:
             response = self.session.get(
                 f"{self.base_url}/history/{prompt_id}", timeout=self.timeout
             )
             response.raise_for_status()
-            return response.json()
+            return APIHistory(**response.json())
         except requests.exceptions.RequestException as e:
             raise ConnectionError(f"获取历史记录失败: {e}") from e
 

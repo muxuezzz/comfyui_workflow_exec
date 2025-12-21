@@ -5,6 +5,15 @@ import uuid
 from typing import Any, Callable, Dict, List, Optional
 
 import websocket
+from pydantic import ValidationError
+
+from config.comfy_schema import (
+    APIHistoryEntry,
+    APINodeID,
+    PromptID,  # 历史条目
+    WSExecutingData,  # 执行数据
+    WSMessage,  # WebSocket消息
+)
 
 from ..workflow_manager.exceptions import WorkflowConnectionError
 from .comfyui_client import ComfyUIClientBase
@@ -95,7 +104,7 @@ class ComfyUIWebSocketClient(ComfyUIClientBase):
         except websocket.WebSocketException as e:
             raise WorkflowConnectionError(f"WebSocket连接失败: {str(e)}") from e
         except Exception as e:
-            raise WorkflowConnectionError(f"连接建立异常: {str(e)}") from e
+            raise WorkflowConnectionError(f"WebSocket连接建立异常: {str(e)}") from e
 
     def execute_workflow(
         self,
@@ -103,7 +112,7 @@ class ComfyUIWebSocketClient(ComfyUIClientBase):
         wait_for_queue: bool = True,
         check_interval: float = 1.0,
         max_wait: Optional[float] = None,
-    ) -> Dict[str, List[bytes]]:
+    ) -> Dict[APINodeID, List[bytes]]:  # 类型化的返回
         """
         执行工作流并处理所有WebSocket消息
 
@@ -117,7 +126,16 @@ class ComfyUIWebSocketClient(ComfyUIClientBase):
             self.wait_for_queue_empty(check_interval, max_wait)
 
         prompt_id = str(uuid.uuid4())
-        self.queue_prompt(prompt, prompt_id, wait_for_queue=False)
+        ticket = self.queue_prompt(prompt, prompt_id, wait_for_queue=False)
+
+        # 检查错误
+        if ticket.node_errors:
+            self.logger.error(f"工作流存在节点错误: {ticket.node_errors}")
+            raise RuntimeError(f"工作流验证失败: {ticket.node_errors}")
+
+        if ticket.error:
+            self.logger.error(f"工作流提交错误: {ticket.error}")
+            raise RuntimeError(f"工作流提交失败: {ticket.error}")
 
         output_images: Dict[str, List[bytes]] = {}
 
@@ -149,7 +167,8 @@ class ComfyUIWebSocketClient(ComfyUIClientBase):
             if prompt_id not in history:
                 raise ValueError(f"Prompt ID {prompt_id} 不存在于历史记录中")
 
-            self._process_history_outputs(history[prompt_id], output_images)
+            entry = history[prompt_id]
+            self._process_history_outputs(entry, output_images)
 
             return output_images
 
@@ -164,14 +183,37 @@ class ComfyUIWebSocketClient(ComfyUIClientBase):
         # 处理JSON消息
         if isinstance(message, str):
             try:
-                msg = json.loads(message)
-                self._handle_json_message(msg, prompt_id)
+                # 使用WSMessage解析
+                ws_msg = WSMessage.model_validate_json(message)
+                self._handle_ws_message(ws_msg, prompt_id)
+            except ValidationError as e:
+                self.logger.error(f"WebSocket消息解析错误: {e}", exc_info=False)
             except json.JSONDecodeError as e:
                 self.logger.error(f"JSON解析错误: {e}", exc_info=False)
 
         # 处理二进制消息 (预览图片)
         else:
             self._handle_binary_message(message)
+
+    def _handle_ws_message(self, ws_msg: WSMessage, prompt_id: PromptID):
+        """处理WebSocket消息对象"""
+        if ws_msg.type == "executing":
+            try:
+                # 使用WSExecutingData解析数据
+                executing_data = WSExecutingData(**ws_msg.data)
+                if executing_data.prompt_id == prompt_id:
+                    self._handle_executing(executing_data)
+            except ValidationError as e:
+                self.logger.warning(f"执行数据解析失败: {e}")
+
+        elif ws_msg.type in ["execution_start", "execution_cached"]:
+            # 处理其他消息类型
+            data = ws_msg.data
+            if data.get("prompt_id") == prompt_id:
+                if ws_msg.type == "execution_start":
+                    self._handle_execution_start(data)
+                elif ws_msg.type == "execution_cached":
+                    self._handle_execution_cached(data)
 
     def _handle_json_message(self, message: Dict[str, Any], prompt_id: str):
         """处理JSON格式的WebSocket消息"""
@@ -197,7 +239,7 @@ class ComfyUIWebSocketClient(ComfyUIClientBase):
             JsonMessageType.EXECUTION_CACHED: lambda d: self._handle_execution_cached(
                 d, prompt_id
             ),
-            JsonMessageType.EXECUTING: lambda d: self._handle_executing(d, prompt_id),
+            JsonMessageType.EXECUTING: lambda d: self._handle_executing(d),
             JsonMessageType.EXECUTED: lambda d: self._handle_executed(d, prompt_id),
             JsonMessageType.PROGRESS: self._handle_progress,
             JsonMessageType.PROGRESS_STATE: self._handle_progress_state,
@@ -226,20 +268,13 @@ class ComfyUIWebSocketClient(ComfyUIClientBase):
             cached_nodes = data.get("nodes", [])
             self.logger.info(f"缓存的节点: {cached_nodes}")
 
-    def _handle_executing(self, data: Dict[str, Any], prompt_id: str):
+    def _handle_executing(self, data: WSExecutingData):
         """处理执行中消息"""
-        if data.get("prompt_id") == prompt_id:
-            node = data.get("node")
-            if node is None:
-                self.logger.info("执行完成!")
-            else:
-                display_node = data.get("display_node")
-                if display_node:
-                    self.logger.info(
-                        f"正在执行节点: {node} (显示节点ID: {display_node})"
-                    )
-                else:
-                    self.logger.info(f"正在执行节点: {node}")
+        node = data.node
+        if node is None:
+            self.logger.info("执行完成!")
+        else:
+            self.logger.info(f"正在执行节点: {node}")
 
     def _handle_executed(self, data: Dict[str, Any], prompt_id: str):
         """处理节点执行完成消息"""
@@ -289,7 +324,7 @@ class ComfyUIWebSocketClient(ComfyUIClientBase):
             错误消息: {error_msg}
         """.strip()
         )
-        raise RuntimeError(f"执行错误: {error_msg}")
+        raise RuntimeError(f"工作流执行错误: {error_msg}")
 
     def _handle_execution_interrupted(self, data: Dict[str, Any]):
         """处理执行中断消息"""
@@ -391,7 +426,9 @@ class ComfyUIWebSocketClient(ComfyUIClientBase):
         return False
 
     def _process_history_outputs(
-        self, history: Dict[str, Any], output_images: Dict[str, List[bytes]]
+        self,
+        history: APIHistoryEntry,  # 类型化的历史条目
+        output_images: Dict[APINodeID, List[bytes]],
     ):
         """处理历史记录中的输出图片"""
         outputs = history.get("outputs", {})
