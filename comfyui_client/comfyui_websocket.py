@@ -1,14 +1,13 @@
 import json
 import logging
 import struct
-import time
 import uuid
 from typing import Any, Callable, Dict, List, Optional
 
-import requests
 import websocket
 
 from ..workflow_manager.exceptions import WorkflowConnectionError
+from .comfyui_client import ComfyUIClientBase
 from .message_config import BinaryMessageType, JsonMessageType, MessageHandlingPolicy
 
 # 配置日志
@@ -24,7 +23,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-class ComfyUIWebSocketClient:
+class ComfyUIWebSocketClient(ComfyUIClientBase):
     """
     基于 WebSocket 协议的 ComfyUI 客户端，用于与 ComfyUI 服务器建立双向通信，
     实现工作流提交、任务执行状态实时监控、执行结果（图片/数据）获取等核心能力。
@@ -63,33 +62,28 @@ class ComfyUIWebSocketClient:
         server_address: str = "127.0.0.1:8188",
         timeout: int = 30,
         production_mode: bool = False,
-        client_id=None,
+        client_id: Optional[str] = None,
     ):
         """
-        初始化客户端
+        初始化WebSocket客户端
 
         Args:
-            server_address: ComfyUI 服务地址，例如 "127.0.0.1:8188" 或 "mydomain.com:8188"
+            server_address: ComfyUI 服务地址
             timeout: HTTP 与 WebSocket 超时时间（秒）
-            client_id: 自定义 WebSocket 客户端 ID，默认随机生成 UUID
             production_mode: 是否启用生产模式（强烈建议批量任务时开启）
+            client_id: 自定义 WebSocket 客户端 ID，默认随机生成 UUID
         """
+        super().__init__(server_address, timeout, client_id)
         self.ws: Optional[websocket.WebSocket] = None
-        self.client_id = str(uuid.uuid4()) if client_id is None else client_id
-        self.server_address = server_address
-        self.timeout = timeout
-        self.production_mode = production_mode  # 生产环境模式开关
+        self.production_mode = production_mode
         self.message_policy = (
             MessageHandlingPolicy.PRODUCTION
             if production_mode
             else MessageHandlingPolicy.DEVELOPMENT
         )
-        # 创建 requests 会话，启用连接池
-        self.session = requests.Session()
-        self.base_url = f"http://{self.server_address}"
-        self.logger = logger  # 实例化logger
 
     def connect(self):
+        """建立WebSocket连接"""
         if self.ws and self.ws.connected:
             return
 
@@ -102,124 +96,6 @@ class ComfyUIWebSocketClient:
             raise WorkflowConnectionError(f"WebSocket连接失败: {str(e)}") from e
         except Exception as e:
             raise WorkflowConnectionError(f"连接建立异常: {str(e)}") from e
-
-    def get_queue_info(self) -> Dict[str, List[Dict[str, Any]]]:
-        """获取队列状态"""
-        try:
-            response = self.session.get(f"{self.base_url}/queue", timeout=self.timeout)
-            response.raise_for_status()  # 抛出HTTP错误
-            return response.json()
-        except requests.exceptions.RequestException as e:
-            raise ConnectionError(f"获取队列状态失败: {e}") from e
-
-    def wait_for_queue_empty(
-        self,
-        check_interval: float = 1.0,
-        max_wait: Optional[float] = None,
-        min_queue_num: int = 3,  # 新增参数：当队列总任务数 < 此值时即视为空闲（默认1，和原来完全等价）
-    ):
-        """
-        智能等待队列空闲
-
-        当队列中「运行中 + 等待中」任务总数 < min_queue_num 时即视为可执行。
-        常用于批量任务时避免堆积或触发 ComfyUI 内存溢出保护机制。
-
-        Args:
-            check_interval: 轮询间隔（秒）
-            max_wait: 最大等待时间（秒），超时抛出 TimeoutError
-            min_queue_num: 执行队列加上等待队列长度小于此数量时认为空闲
-        """
-        self.logger.info(f"正在等待队列任务数 < {min_queue_num} ...")
-        start_time = time.time()
-
-        while True:
-            try:
-                queue_status = self.get_queue_info()
-
-                # 安全获取列表，防止None
-                running = queue_status.get("queue_running") or []
-                pending = queue_status.get("queue_pending") or []
-
-                running_count = len(running)
-                pending_count = len(pending)
-                total_count = running_count + pending_count
-
-                if total_count < min_queue_num:
-                    self.logger.info(
-                        f"队列已空闲（总任务 {total_count} < {min_queue_num}，"
-                        f"运行中: {running_count}，等待中: {pending_count}），准备执行..."
-                    )
-                    break
-
-                # 检查是否超时
-                if max_wait and (time.time() - start_time) > max_wait:
-                    raise TimeoutError(f"等待队列空闲超时（{max_wait}秒）")
-
-                if not self.production_mode:
-                    # 非生产环境才输出详细状态
-                    self.logger.debug(
-                        f"队列状态 - 运行中: {running_count}, 等待中: {pending_count}, 总计: {total_count}"
-                    )
-
-                time.sleep(check_interval)
-
-            except Exception as e:
-                self.logger.error(f"获取队列状态失败: {e}", exc_info=False)
-                time.sleep(check_interval)
-
-    def queue_prompt(
-        self, prompt: Dict[str, Any], prompt_id: Optional[str] = None
-    ) -> Dict[str, Any]:
-        """提交工作流到执行队列"""
-        if prompt_id is None:
-            prompt_id = str(uuid.uuid4())
-
-        payload = {
-            "prompt": prompt,
-            "client_id": self.client_id,
-            "prompt_id": prompt_id,
-        }
-
-        try:
-            self.logger.info(f"提交prompt到队列: {prompt_id}")
-            response = self.session.post(
-                f"{self.base_url}/prompt",
-                json=payload,  # 自动序列化并设置Content-Type
-                timeout=self.timeout,
-            )
-            response.raise_for_status()
-            return response.json()
-        except requests.exceptions.RequestException as e:
-            raise ConnectionError(f"提交prompt失败: {e}") from e
-
-    def get_history(self, prompt_id: str) -> Dict[str, Any]:
-        """获取执行历史"""
-        try:
-            response = self.session.get(
-                f"{self.base_url}/history/{prompt_id}", timeout=self.timeout
-            )
-            response.raise_for_status()
-            return response.json()
-        except requests.exceptions.RequestException as e:
-            raise ConnectionError(f"获取历史记录失败: {e}") from e
-
-    def get_image(self, filename: str, subfolder: str, folder_type: str) -> bytes:
-        """下载生成的图片"""
-        params = {"filename": filename, "subfolder": subfolder, "type": folder_type}
-
-        try:
-            if not self.production_mode:  # 生产环境不输出下载日志
-                self.logger.debug(f"下载图片: {filename}")
-            response = self.session.get(
-                f"{self.base_url}/view",
-                params=params,  # 自动编码URL参数
-                timeout=self.timeout,
-                stream=True,
-            )
-            response.raise_for_status()
-            return response.content
-        except requests.exceptions.RequestException as e:
-            raise ConnectionError(f"获取图片失败: {e}") from e
 
     def execute_workflow(
         self,
@@ -241,7 +117,7 @@ class ComfyUIWebSocketClient:
             self.wait_for_queue_empty(check_interval, max_wait)
 
         prompt_id = str(uuid.uuid4())
-        self.queue_prompt(prompt, prompt_id)
+        self.queue_prompt(prompt, prompt_id, wait_for_queue=False)
 
         output_images: Dict[str, List[bytes]] = {}
 
@@ -251,7 +127,7 @@ class ComfyUIWebSocketClient:
                     # 设置WebSocket接收超时
                     out = self.ws.recv(timeout=self.timeout)
                 except websocket.WebSocketTimeoutException:
-                    if not self.production_mode:  # 生产环境不输出超时日志
+                    if not self.production_mode:
                         self.logger.debug("WebSocket接收超时，继续等待...")
                     continue
                 except websocket.WebSocketConnectionClosedException:
@@ -377,22 +253,25 @@ class ComfyUIWebSocketClient:
                 log_msg += f" (显示节点ID: {display_node})"
 
             self.logger.info(log_msg)
-            self.logger.debug(f"节点 {node} 输出数据: {output}")
+            if not self.production_mode:
+                self.logger.debug(f"节点 {node} 输出数据: {output}")
 
     def _handle_progress(self, data: Dict[str, Any]):
         """处理进度更新消息"""
         node = data.get("node")
         value = data.get("value", 0)
         max_val = data.get("max", 100)
-        self.logger.info(
-            f"进度更新 - 节点 {node}: {value}/{max_val} ({value / max_val * 100:.1f}%)"
-        )
+        if not self.production_mode:
+            self.logger.info(
+                f"进度更新 - 节点 {node}: {value}/{max_val} ({value / max_val * 100:.1f}%)"
+            )
 
     def _handle_progress_state(self, data: Dict[str, Any]):
         """处理进度状态消息"""
-        nodes = data.get("nodes", {})
-        for node_id, node_state in nodes.items():
-            self.logger.debug(f"节点 {node_id} 状态: {node_state}")
+        if not self.production_mode:
+            nodes = data.get("nodes", {})
+            for node_id, node_state in nodes.items():
+                self.logger.debug(f"节点 {node_id} 状态: {node_state}")
 
     def _handle_execution_error(self, data: Dict[str, Any]):
         """处理执行错误消息"""
@@ -426,7 +305,7 @@ class ComfyUIWebSocketClient:
     def _handle_binary_message(self, message: bytes):
         """处理二进制消息"""
         if len(message) < 4:
-            if not self.production_mode:  # 生产环境不输出短消息警告
+            if not self.production_mode:
                 self.logger.warning("二进制消息太短，无法解析")
             return
 
@@ -436,9 +315,8 @@ class ComfyUIWebSocketClient:
             # 使用枚举替代硬编码数字
             event_type = BinaryMessageType(event_type_value)
 
-            # 生产环境下只处理关键的二进制消息（这里根据需要调整）
+            # 生产环境下只处理关键的二进制消息
             if self.production_mode:
-                # 生产环境可以选择不处理任何二进制消息，或者只处理特定类型
                 return
 
             handlers = {
@@ -454,7 +332,7 @@ class ComfyUIWebSocketClient:
                 self.logger.warning(f"未知的二进制消息类型: {event_type}")
 
         except ValueError:
-            if not self.production_mode:  # 生产环境忽略未知类型值
+            if not self.production_mode:
                 self.logger.warning(f"未知的二进制消息类型值: {event_type_value}")
 
     def _handle_preview_image(self, data: bytes):
@@ -519,7 +397,7 @@ class ComfyUIWebSocketClient:
         outputs = history.get("outputs", {})
 
         for node_id, node_output in outputs.items():
-            if not self.production_mode:  # 生产环境不输出详细输出信息
+            if not self.production_mode:
                 self.logger.info(f"节点 {node_id} 最终输出:")
 
             # 处理图片输出
@@ -533,7 +411,7 @@ class ComfyUIWebSocketClient:
                             image_info["type"],
                         )
                         images_output.append(image_data)
-                        if not self.production_mode:  # 生产环境不输出图片信息
+                        if not self.production_mode:
                             self.logger.info(f"  图片: {image_info['filename']}")
                     except Exception as e:
                         self.logger.error(f"  获取图片失败: {e}", exc_info=False)
@@ -549,7 +427,8 @@ class ComfyUIWebSocketClient:
 
         # 打印执行状态
         status = history.get("status", {})
-        self.logger.info(f"执行状态: {status}")
+        if not self.production_mode:
+            self.logger.info(f"执行状态: {status}")
 
     def close(self):
         """关闭连接和资源"""
@@ -561,18 +440,13 @@ class ComfyUIWebSocketClient:
                 self.logger.error(f"关闭WebSocket连接失败: {e}", exc_info=False)
             self.ws = None
 
-        # 关闭requests会话
-        self.session.close()
-        self.logger.info("HTTP会话已关闭")
+        # 调用父类的close方法关闭HTTP会话
+        super().close()
 
     def __enter__(self):
         """支持上下文管理器"""
         self.connect()
         return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        """支持上下文管理器"""
-        self.close()
 
 
 # 使用示例
