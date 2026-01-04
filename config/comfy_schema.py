@@ -1,8 +1,4 @@
 # -*- coding: utf-8 -*-
-# SPDX-License-Identifier: MIT
-#
-# Comfy Catapult 项目要求对此文件的贡献需在 MIT 许可证或兼容的开源许可证下授权。请查看 LICENSE.md 获取许可证文本。
-
 import json
 from typing import Any, Dict, List, Literal, NamedTuple, Optional, Union
 from urllib.parse import urljoin

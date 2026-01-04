@@ -81,4 +81,3 @@ class WorkflowRunner:
 
         except Exception as e:
             logger.error(f"工作流执行失败: {str(e)}", exc_info=True)
-            raise

@@ -12,7 +12,7 @@ def resolve_path(config_path: Path, relative_path: str) -> Path:
     return path if path.is_absolute() else (config_path.parent / path).resolve()
 
 
-def load_file_content(self, file_path: Path) -> Dict:
+def load_file_content(file_path: Path) -> Dict:
     if not file_path.exists():
         raise FileNotFoundError(f"文件不存在: {file_path}")
 

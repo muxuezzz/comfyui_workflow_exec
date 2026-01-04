@@ -38,3 +38,18 @@ class JsonMessageType(Enum):
             # 可以继续添加其他映射
         }
         return mapping.get(msg_type)
+
+
+class MessageHandlingPolicy(Enum):
+    """消息处理策略枚举"""
+
+    # 生产环境：只处理关键消息
+    PRODUCTION = [
+        JsonMessageType.EXECUTION_ERROR,
+        JsonMessageType.EXECUTION_INTERRUPTED,
+        JsonMessageType.EXECUTION_SUCCESS,
+        JsonMessageType.EXECUTING,
+    ]
+
+    # 开发环境：处理所有消息
+    DEVELOPMENT = list(JsonMessageType)
