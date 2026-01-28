@@ -20,7 +20,9 @@ class WorkflowRunner:
     ):
         self.config_path = Path(config_path)
         self.workflow_manager = WorkflowManager()
-        self.client = comfyui_client if comfyui_client else ComfyUIWebSocketClient(server_address="localhost:8188")
+        self.client = (
+            comfyui_client if comfyui_client else ComfyUIWebSocketClient(server_address="http://localhost:8188")
+        )
 
         # 回调函数
         self.preprocess_callback: Callable | None = None

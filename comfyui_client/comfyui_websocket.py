@@ -1,4 +1,5 @@
 import json
+import os
 import struct
 import uuid
 from collections.abc import Callable
@@ -30,7 +31,7 @@ class ComfyUIWebSocketClient(ComfyUIClientBase):
 
     使用示例：
         with ComfyUIWebSocketClient(
-            server_address="127.0.0.1:8188",
+            server_address="http://localhost:8188",
             production_mode=True     # 生产环境推荐开启
         ) as client:
             # 执行并监控所有图像生成过程，获取工作流程中的所有image
@@ -46,7 +47,7 @@ class ComfyUIWebSocketClient(ComfyUIClientBase):
         - 极大减少日志量，提升性能与可读性
 
     Attributes:
-        server_address (str): ComfyUI 服务器地址，格式为 "host:port"（如 "127.0.0.1:8188"）
+        server_address (str): ComfyUI 服务器地址，格式为 "host:port"（如 "http://localhost:8188"）
         timeout (int): WebSocket 连接超时时间（秒），默认 30 秒
         ws (Optional[websocket.WebSocket]): WebSocket 连接实例，连接成功后非 None
         is_connected (bool): 当前连接状态标识
@@ -59,7 +60,7 @@ class ComfyUIWebSocketClient(ComfyUIClientBase):
 
     def __init__(
         self,
-        server_address: str = "127.0.0.1:8188",
+        server_address: str = os.getenv("COMFYUI_BACKED_URL", "http://localhost:8188"),
         timeout: int = 30,
         production_mode: bool = False,
         client_id: str | None = None,
@@ -76,11 +77,7 @@ class ComfyUIWebSocketClient(ComfyUIClientBase):
         super().__init__(server_address, timeout, client_id)
         self.ws: websocket.WebSocket | None = None
         self.production_mode = production_mode
-        self.message_policy = (
-            MessageHandlingPolicy.PRODUCTION
-            if production_mode
-            else MessageHandlingPolicy.DEVELOPMENT
-        )
+        self.message_policy = MessageHandlingPolicy.PRODUCTION if production_mode else MessageHandlingPolicy.DEVELOPMENT
 
     def connect(self):
         """建立WebSocket连接"""
@@ -284,9 +281,7 @@ class ComfyUIWebSocketClient(ComfyUIClientBase):
         value = data.get("value", 0)
         max_val = data.get("max", 100)
         if not self.production_mode:
-            self.logger.info(
-                f"进度更新 - 节点 {node}: {value}/{max_val} ({value / max_val * 100:.1f}%)"
-            )
+            self.logger.info(f"进度更新 - 节点 {node}: {value}/{max_val} ({value / max_val * 100:.1f}%)")
 
     def _handle_progress_state(self, data: dict[str, Any]):
         """处理进度状态消息"""
@@ -315,9 +310,7 @@ class ComfyUIWebSocketClient(ComfyUIClientBase):
 
     def _handle_execution_interrupted(self, data: dict[str, Any]):
         """处理执行中断消息"""
-        self.logger.error(
-            f"执行被中断! Prompt ID: {data.get('prompt_id')}, 节点ID: {data.get('node_id')}"
-        )
+        self.logger.error(f"执行被中断! Prompt ID: {data.get('prompt_id')}, 节点ID: {data.get('node_id')}")
         raise RuntimeError("执行被中断")
 
     def _handle_execution_success(self, data: dict[str, Any]):

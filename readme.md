@@ -180,7 +180,7 @@ workflow_tasks = [
 ]
 
 # 循环执行队列中的任务
-with ComfyUIWebSocketClient(server_address="127.0.0.1:8188") as client:
+with ComfyUIWebSocketClient(server_address="http://localhost:8188") as client:
     for task in workflow_tasks:
         run_workflow(config_file=task["config_file"], comfyui_client=client)
 ```
@@ -215,7 +215,7 @@ _VALUE_HANDLERS = {
 
 ## 注意事项
 
-- 确保ComfyUI服务已启动并在配置的地址（默认 `127.0.0.1:8188`）可用
+- 确保ComfyUI服务已启动并在配置的地址（默认 `http://localhost:8188`）可用
 - 工作流模板中的节点ID和类型需与配置文件中的保持一致
 - 生产环境中建议开启 `production_mode`以减少日志输出
 - 大批量任务执行时，可调整 `wait_for_queue_empty`中的 `min_queue_num`参数控制并发量

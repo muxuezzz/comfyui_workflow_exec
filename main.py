@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from comfyui_client.comfyui_websocket import ComfyUIWebSocketClient
@@ -66,16 +67,18 @@ if __name__ == "__main__":
     import argparse
     import sys
 
+    from dotenv import load_dotenv
+
+    load_dotenv()
+
     parser = argparse.ArgumentParser(description="ComfyUI 工作流批量执行工具")
-    parser.add_argument(
-        "-c", "--config", type=str, help="指定单个配置文件路径 (覆盖默认任务列表)", default=None
-    )
+    parser.add_argument("-c", "--config", type=str, help="指定单个配置文件路径 (覆盖默认任务列表)", default=None)
     parser.add_argument(
         "-s",
         "--server",
         type=str,
-        default="127.0.0.1:8188",
-        help="ComfyUI 服务器地址 (默认: 127.0.0.1:8188)",
+        default=os.getenv("COMFYUI_BACKED_URL", "http://localhost:8188"),
+        help="ComfyUI 服务器地址 (默认: http://localhost:8188)",
     )
 
     args = parser.parse_args()
@@ -95,9 +98,7 @@ if __name__ == "__main__":
 
     # 初始化comfyui客户端
     try:
-        with ComfyUIWebSocketClient(
-            server_address=args.server, production_mode=True
-        ) as comfyui_client:
+        with ComfyUIWebSocketClient(server_address=args.server, production_mode=True) as comfyui_client:
             # 循环执行队列中的任务
             for idx, task in enumerate(workflow_tasks, 1):
                 logger.info(f"\n===== 执行第 {idx} 个任务 =====")

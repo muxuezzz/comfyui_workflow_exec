@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 import uuid
 from typing import Any
@@ -28,13 +29,13 @@ class ComfyUIClientBase:
     - 支持上下文管理器
 
     使用示例：
-        client = ComfyUIClientBase(server_address="127.0.0.1:8188")
+        client = ComfyUIClientBase(server_address="http://localhost:8188")
         prompt_id = client.queue_prompt(workflow)
     """
 
     def __init__(
         self,
-        server_address: str = "127.0.0.1:8188",
+        server_address: str = os.getenv("COMFYUI_BACKED_URL", "http://localhost:8188"),
         timeout: int = 30,
         client_id: str | None = None,
     ):
@@ -42,7 +43,7 @@ class ComfyUIClientBase:
         初始化客户端基础类
 
         Args:
-            server_address: ComfyUI 服务地址，例如 "127.0.0.1:8188" 或 "mydomain.com:8188"
+            server_address: ComfyUI 服务地址，例如 "http://localhost:8188" 或 "mydomain.com:8188"
             timeout: HTTP 超时时间（秒）
             client_id: 自定义客户端 ID，默认随机生成 UUID
         """
@@ -51,7 +52,7 @@ class ComfyUIClientBase:
         self.timeout = timeout
         # 创建 requests 会话，启用连接池
         self.session = requests.Session()
-        self.base_url = f"http://{self.server_address}"
+        self.base_url = os.getenv("COMFYUI_BACKED_URL", server_address)
         self.logger = logger
 
     def get_queue_info(self) -> APIQueueInfo:
@@ -105,9 +106,7 @@ class ComfyUIClientBase:
                 if max_wait and (time.time() - start_time) > max_wait:
                     raise TimeoutError(f"等待队列空闲超时（{max_wait}秒）")
 
-                self.logger.debug(
-                    f"队列状态 - 运行中: {running_count}, 等待中: {pending_count}, 总计: {total_count}"
-                )
+                self.logger.debug(f"队列状态 - 运行中: {running_count}, 等待中: {pending_count}, 总计: {total_count}")
 
                 time.sleep(check_interval)
 
@@ -168,9 +167,7 @@ class ComfyUIClientBase:
     def get_history(self, prompt_id: PromptID) -> APIHistory:
         """获取执行历史"""
         try:
-            response = self.session.get(
-                f"{self.base_url}/history/{prompt_id}", timeout=self.timeout
-            )
+            response = self.session.get(f"{self.base_url}/history/{prompt_id}", timeout=self.timeout)
             response.raise_for_status()
             return APIHistory(**response.json())
         except requests.exceptions.RequestException as e:
@@ -249,13 +246,13 @@ class ComfyUISimpleClient(ComfyUIClientBase):
     - 轻量级，无WebSocket依赖
 
     使用示例：
-        client = ComfyUISimpleClient(server_address="127.0.0.1:8188")
+        client = ComfyUISimpleClient(server_address="http://localhost:8188")
         prompt_id = client.queue_prompt(workflow, wait_queue=True)
     """
 
     def __init__(
         self,
-        server_address: str = "127.0.0.1:8188",
+        server_address: str = os.getenv("COMFYUI_BACKED_URL", "http://localhost:8188"),
         timeout: int = 30,
         client_id: str | None = None,
     ):

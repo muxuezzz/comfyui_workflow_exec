@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 import uuid
 from typing import Any
@@ -17,14 +18,14 @@ class ComfyUISimpleClient:
 
     def __init__(
         self,
-        server_address: str = "127.0.0.1:8188",
+        server_address: str = os.getenv("COMFYUI_BACKED_URL", "http://localhost:8188"),
         timeout: int = 30,
         client_id: str | None = None,
     ):
         self.server_address = server_address
         self.timeout = timeout
         self.client_id = client_id or str(uuid.uuid4())
-        self.base_url = f"http://{self.server_address}"
+        self.base_url = server_address
         self.session = requests.Session()  # 复用连接池提升效率
 
     def queue_prompt(self, prompt: dict, wait_queue=True) -> str:

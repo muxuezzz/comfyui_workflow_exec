@@ -120,7 +120,7 @@ if __name__ == "__main__":
 
     # 初始化comfyui客户端
     with ComfyUIWebSocketClient(
-        server_address="127.0.0.1:8188", production_mode=True
+        server_address="http://localhost:8188", production_mode=True
     ) as comfyui_client:
         # 循环执行队列中的任务
         for idx, task in enumerate(workflow_tasks, 1):
