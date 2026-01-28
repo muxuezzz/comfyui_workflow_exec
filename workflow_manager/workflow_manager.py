@@ -1,19 +1,17 @@
 import json
-import logging
 import random
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Union
+from typing import Any
 
-from constant import SEED_NODE_LIST, SEED_PARA_LIST
 from pydantic import BaseModel, Field, field_validator
 
-from ..utils.file_utils import load_file_content
+from utils.file_utils import load_file_content
+from utils.logger import setup_logger
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
-logger = logging.getLogger(__name__)
+from .constant import SEED_NODE_LIST, SEED_PARA_LIST
+
+logger = setup_logger(__name__)
 
 
 class ValueType(str, Enum):
@@ -76,7 +74,7 @@ class RootConfig(BaseModel):
     """配置文件完整结构校验"""
 
     workflow_path: str = Field(description="工作流模板路径")
-    nodes: List[WorkflowNodeConfig] = Field(default=[], description="节点修改配置列表")
+    nodes: list[WorkflowNodeConfig] = Field(default=[], description="节点修改配置列表")
 
 
 class WorkflowManager:
@@ -126,7 +124,7 @@ class WorkflowManager:
 
     def modify_json_item(
         self,
-        data: Dict,
+        data: dict,
         class_type: str,
         parameter_name: str,
         new_value: Any,
@@ -137,7 +135,7 @@ class WorkflowManager:
         """
         found_count = 0
         # ComfyUI的API格式通常是 {"id": {"class_type": "...", "inputs": {...}}}
-        for key, item in data.items():
+        for _key, item in data.items():
             if "class_type" in item and item["class_type"] == class_type:
                 found_count += 1
                 if found_count == index:
@@ -170,7 +168,7 @@ class WorkflowManager:
             data.pop(k)
         return data
 
-    def _randomize_seed_nodes(self, workflow_data: Dict, strict: bool = False):
+    def _randomize_seed_nodes(self, workflow_data: dict, strict: bool = False):
         """
         随机化种子节点值
 
@@ -243,10 +241,10 @@ class WorkflowManager:
 
     def get_workflow(
         self,
-        config_file_path: Union[str, Path],
+        config_file_path: str | Path,
         random_init: bool = True,
         remove_previews: bool = True,
-    ) -> Dict:
+    ) -> dict:
         config_path = Path(config_file_path)
 
         logger.info(f"加载配置文件: {config_path}")
@@ -346,9 +344,7 @@ if __name__ == "__main__":
 
     print("\n--- 测试 1: random_init = True ---")
     new_workflow = manager.get_workflow(my_config_path, random_init=True)
-    print(
-        "生成的 workflow 片段:", json.dumps(new_workflow, indent=2, ensure_ascii=False)
-    )
+    print("生成的 workflow 片段:", json.dumps(new_workflow, indent=2, ensure_ascii=False))
 
     print("\n--- 测试 2: random_init = False ---")
     original_workflow = manager.get_workflow(my_config_path, random_init=False)

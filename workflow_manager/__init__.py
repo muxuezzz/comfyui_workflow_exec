@@ -1,5 +1,5 @@
-from workflow_run import WorkflowRunner
+from .workflow_manager import WorkflowManager
+# WorkflowRunner triggers circular import with comfyui_client if imported here
+# from .workflow_run import WorkflowRunner
 
-from workflow_manager import WorkflowManager
-
-__all__ = ["WorkflowManager", "WorkflowRunner"]
+__all__ = ["WorkflowManager"]

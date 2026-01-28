@@ -1,13 +1,11 @@
 import logging
 import time
 import uuid
-from typing import Any, Dict, Optional
+from typing import Any
 
 import requests
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -21,7 +19,7 @@ class ComfyUISimpleClient:
         self,
         server_address: str = "127.0.0.1:8188",
         timeout: int = 30,
-        client_id: Optional[str] = None,
+        client_id: str | None = None,
     ):
         self.server_address = server_address
         self.timeout = timeout
@@ -29,7 +27,7 @@ class ComfyUISimpleClient:
         self.base_url = f"http://{self.server_address}"
         self.session = requests.Session()  # 复用连接池提升效率
 
-    def queue_prompt(self, prompt: Dict, wait_queue=True) -> str:
+    def queue_prompt(self, prompt: dict, wait_queue=True) -> str:
         """
         提交工作流到ComfyUI队列
 
@@ -50,9 +48,7 @@ class ComfyUISimpleClient:
             self.wait_for_queue_empty()
 
         try:
-            response = self.session.post(
-                f"{self.base_url}/prompt", json=payload, timeout=self.timeout
-            )
+            response = self.session.post(f"{self.base_url}/prompt", json=payload, timeout=self.timeout)
             response.raise_for_status()
             logger.info(f"工作流已提交，任务ID: {prompt_id}")
             return prompt_id
@@ -63,7 +59,7 @@ class ComfyUISimpleClient:
     def wait_for_queue_empty(
         self,
         check_interval: float = 1.0,
-        max_wait: Optional[float] = None,
+        max_wait: float | None = None,
         min_queue_num: int = 3,
     ):
         """等待队列空闲（可选）"""
@@ -72,9 +68,7 @@ class ComfyUISimpleClient:
 
         while True:
             try:
-                response = self.session.get(
-                    f"{self.base_url}/queue", timeout=self.timeout
-                )
+                response = self.session.get(f"{self.base_url}/queue", timeout=self.timeout)
                 queue_info = response.json()
 
                 running = len(queue_info.get("queue_running", []))
@@ -94,7 +88,7 @@ class ComfyUISimpleClient:
                 logger.warning(f"获取队列状态失败: {e}，将重试...")
                 time.sleep(check_interval)
 
-    def get_prompt_status(self) -> Dict[str, Any]:
+    def get_prompt_status(self) -> dict[str, Any]:
         """
         获取提示状态
 
@@ -102,13 +96,13 @@ class ComfyUISimpleClient:
             状态信息字典
         """
         try:
-            response = requests.get(f"{self.base_url}/prompt")
+            response = requests.get(f"{self.base_url}/prompt", timeout=self.timeout)
             response.raise_for_status()
             return response.json()
         except requests.RequestException as e:
             raise ConnectionError(f"Failed to get prompt status: {e}")
 
-    def get_queue_status(self) -> Dict[str, Any]:
+    def get_queue_status(self) -> dict[str, Any]:
         """
         获取队列状态
 
@@ -116,7 +110,7 @@ class ComfyUISimpleClient:
             队列状态信息字典
         """
         try:
-            response = requests.get(f"{self.base_url}/queue")
+            response = requests.get(f"{self.base_url}/queue", timeout=self.timeout)
             response.raise_for_status()
             return response.json()
         except requests.RequestException as e:
@@ -135,7 +129,7 @@ class ComfyUISimpleClient:
         except ConnectionError:
             return False
 
-    def get_system_info(self) -> Dict[str, Any]:
+    def get_system_info(self) -> dict[str, Any]:
         """
         获取系统信息
 

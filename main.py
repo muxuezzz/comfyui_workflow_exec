@@ -1,17 +1,10 @@
-import logging
 from pathlib import Path
-from typing import Dict, List, Optional
 
-from comfyui_client.comfyui_simplclient import ComfyUISimpleClient
 from comfyui_client.comfyui_websocket import ComfyUIWebSocketClient
-from workflow_manager import WorkflowRunner
-from workflow_manager.exceptions import ConfigValidationError, WorkflowConnectionError
+from utils.logger import setup_logger
+from workflow_manager.workflow_run import execute_workflow_task
 
-# 配置日志
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__)
 
 
 def preprocess_callback():
@@ -25,7 +18,7 @@ def preprocess_callback():
     pass
 
 
-def postprocess_callback(output_images: Dict[str, List[bytes]]) -> Dict[str, List[str]]:
+def postprocess_callback(output_images: dict[str, list[bytes]]) -> dict[str, list[str]]:
     """后处理函数示例：每次工作流调用后执行"""
     logger.info("执行自定义后处理逻辑...")
     # 保存图片并返回保存路径（核心后处理逻辑）
@@ -47,7 +40,7 @@ def postprocess_callback(output_images: Dict[str, List[bytes]]) -> Dict[str, Lis
     return saved_paths
 
 
-def workflow_modify_callback(workflow_data: Dict) -> Dict:
+def workflow_modify_callback(workflow_data: dict) -> dict:
     """工作流修改回调函数示例：在执行前动态修改工作流参数"""
     logger.info("执行自定义工作流修改逻辑...")
     # 示例1：修改KSampler节点的采样步数
@@ -68,68 +61,57 @@ def workflow_modify_callback(workflow_data: Dict) -> Dict:
     return workflow_data
 
 
-def run_workflow(
-    config_file: str = "testworkflowconfig/config/my_config.json",
-    comfyui_client: ComfyUIWebSocketClient
-    | ComfyUISimpleClient = ComfyUIWebSocketClient(production_mode=True),
-    random_init: bool = True,
-    remove_previews: bool = True,
-) -> Optional[Dict[str, List[str]]]:
-    """
-    可复用的工作流执行函数（替代原main函数，支持循环/队列调用）
-
-    参数说明：
-    - config_file: 工作流配置文件路径
-    - server_address: ComfyUI WebSocket服务器地址
-    - random_init: 是否启用随机值初始化工作流
-    - remove_previews: 是否移除预览节点以提升执行效率
-
-    返回值：
-    - 后处理后的结果（如图片保存路径字典），执行失败返回None
-    """
-    try:
-        # 初始化工作流运行器
-        runner = WorkflowRunner(config_path=config_file, comfyui_client=comfyui_client)
-
-        # 绑定回调函数（可根据场景动态替换不同回调）
-        runner.set_preprocess_callback(preprocess_callback)
-        runner.set_postprocess_callback(postprocess_callback)
-        runner.set_workflow_modify_callback(workflow_modify_callback)
-
-        # 执行工作流核心逻辑
-        logger.info(f"开始执行工作流，配置文件：{config_file}")
-        results = runner.run(random_init=random_init, remove_previews=remove_previews)
-
-        logger.info(f"工作流执行完成，配置文件：{config_file}")
-        return results
-
-    except (ConfigValidationError, WorkflowConnectionError) as e:
-        logger.error(
-            f"工作流执行失败（配置文件：{config_file}）: {str(e)}", exc_info=True
-        )
-        return None
-
-
 # 示例：循环执行多个工作流任务（模拟队列/循环场景）
 if __name__ == "__main__":
-    # 模拟任务队列：多个配置文件待执行
-    workflow_tasks = [
-        {"config_file": "testworkflowconfig/config/task1.json"},
-        {"config_file": "testworkflowconfig/config/task2.json"},
-        {"config_file": "testworkflowconfig/config/task3.json"},
-    ]
+    import argparse
+    import sys
+
+    parser = argparse.ArgumentParser(description="ComfyUI 工作流批量执行工具")
+    parser.add_argument(
+        "-c", "--config", type=str, help="指定单个配置文件路径 (覆盖默认任务列表)", default=None
+    )
+    parser.add_argument(
+        "-s",
+        "--server",
+        type=str,
+        default="127.0.0.1:8188",
+        help="ComfyUI 服务器地址 (默认: 127.0.0.1:8188)",
+    )
+
+    args = parser.parse_args()
+
+    # 确定任务列表
+    if args.config:
+        workflow_tasks = [{"config_file": args.config}]
+        logger.info(f"使用命令行指定的配置文件: {args.config}")
+    else:
+        # 默认模拟任务队列
+        workflow_tasks = [
+            {"config_file": "testworkflowconfig/config/task1.json"},
+            {"config_file": "testworkflowconfig/config/task2.json"},
+            {"config_file": "testworkflowconfig/config/task3.json"},
+        ]
+        logger.info(f"使用默认示例任务队列 (共{len(workflow_tasks)}个任务)")
 
     # 初始化comfyui客户端
-    with ComfyUIWebSocketClient(
-        server_address="127.0.0.1:8188", production_mode=True
-    ) as comfyui_client:
-        # 循环执行队列中的任务
-        for idx, task in enumerate(workflow_tasks, 1):
-            logger.info(f"\n===== 执行第 {idx} 个任务 =====")
-            task_result = run_workflow(
-                config_file=task["config_file"], comfyui_client=comfyui_client
-            )
-            if task_result:
-                logger.info(f"第 {idx} 个任务结果：{task_result}")
-            else:
-                logger.warning(f"第 {idx} 个任务执行失败，跳过后续处理")
+    try:
+        with ComfyUIWebSocketClient(
+            server_address=args.server, production_mode=True
+        ) as comfyui_client:
+            # 循环执行队列中的任务
+            for idx, task in enumerate(workflow_tasks, 1):
+                logger.info(f"\n===== 执行第 {idx} 个任务 =====")
+                task_result = execute_workflow_task(
+                    config_file=task["config_file"],
+                    comfyui_client=comfyui_client,
+                    preprocess_callback=preprocess_callback,
+                    postprocess_callback=postprocess_callback,
+                    workflow_modify_callback=workflow_modify_callback,
+                )
+                if task_result:
+                    logger.info(f"第 {idx} 个任务结果：{task_result}")
+                else:
+                    logger.warning(f"第 {idx} 个任务执行失败，跳过后续处理")
+    except Exception as e:
+        logger.error(f"程序执行异常: {e}")
+        sys.exit(1)

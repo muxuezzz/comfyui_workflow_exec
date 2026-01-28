@@ -1,8 +1,8 @@
 import json
-import logging
 import struct
 import uuid
-from typing import Any, Callable, Dict, List, Optional
+from collections.abc import Callable
+from typing import Any
 
 import websocket
 from pydantic import ValidationError
@@ -14,22 +14,13 @@ from config.comfy_schema import (
     WSExecutingData,  # 执行数据
     WSMessage,  # WebSocket消息
 )
+from utils.logger import setup_logger
+from workflow_manager.exceptions import WorkflowConnectionError
 
-from ..workflow_manager.exceptions import WorkflowConnectionError
 from .comfyui_client import ComfyUIClientBase
 from .message_config import BinaryMessageType, JsonMessageType, MessageHandlingPolicy
 
-# 配置日志
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(filename)s:%(lineno)d - %(levelname)s - %(message)s",
-    handlers=[
-        logging.StreamHandler(),
-        # 可选：添加文件处理器
-        # logging.FileHandler('comfyui_client.log', encoding='utf-8')
-    ],
-)
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__)
 
 
 class ComfyUIWebSocketClient(ComfyUIClientBase):
@@ -71,7 +62,7 @@ class ComfyUIWebSocketClient(ComfyUIClientBase):
         server_address: str = "127.0.0.1:8188",
         timeout: int = 30,
         production_mode: bool = False,
-        client_id: Optional[str] = None,
+        client_id: str | None = None,
     ):
         """
         初始化WebSocket客户端
@@ -83,7 +74,7 @@ class ComfyUIWebSocketClient(ComfyUIClientBase):
             client_id: 自定义 WebSocket 客户端 ID，默认随机生成 UUID
         """
         super().__init__(server_address, timeout, client_id)
-        self.ws: Optional[websocket.WebSocket] = None
+        self.ws: websocket.WebSocket | None = None
         self.production_mode = production_mode
         self.message_policy = (
             MessageHandlingPolicy.PRODUCTION
@@ -108,11 +99,11 @@ class ComfyUIWebSocketClient(ComfyUIClientBase):
 
     def execute_workflow(
         self,
-        prompt: Dict[str, Any],
+        prompt: dict[str, Any],
         wait_for_queue: bool = True,
         check_interval: float = 1.0,
-        max_wait: Optional[float] = None,
-    ) -> Dict[APINodeID, List[bytes]]:  # 类型化的返回
+        max_wait: float | None = None,
+    ) -> dict[APINodeID, list[bytes]]:  # 类型化的返回
         """
         执行工作流并处理所有WebSocket消息
 
@@ -137,7 +128,7 @@ class ComfyUIWebSocketClient(ComfyUIClientBase):
             self.logger.error(f"工作流提交错误: {ticket.error}")
             raise RuntimeError(f"工作流提交失败: {ticket.error}")
 
-        output_images: Dict[str, List[bytes]] = {}
+        output_images: dict[str, list[bytes]] = {}
 
         try:
             while True:
@@ -176,9 +167,7 @@ class ComfyUIWebSocketClient(ComfyUIClientBase):
             self.logger.error(f"执行工作流失败: {e}", exc_info=True)
             raise
 
-    def _process_message(
-        self, message: Any, prompt_id: str, output_images: Dict[str, List[bytes]]
-    ):
+    def _process_message(self, message: Any, prompt_id: str, output_images: dict[str, list[bytes]]):
         """处理WebSocket消息"""
         # 处理JSON消息
         if isinstance(message, str):
@@ -215,7 +204,7 @@ class ComfyUIWebSocketClient(ComfyUIClientBase):
                 elif ws_msg.type == "execution_cached":
                     self._handle_execution_cached(data)
 
-    def _handle_json_message(self, message: Dict[str, Any], prompt_id: str):
+    def _handle_json_message(self, message: dict[str, Any], prompt_id: str):
         """处理JSON格式的WebSocket消息"""
         msg_type_str = message.get("type")
 
@@ -233,12 +222,10 @@ class ComfyUIWebSocketClient(ComfyUIClientBase):
             return
 
         # 构建消息处理器映射
-        handlers: Dict[JsonMessageType, Callable] = {
+        handlers: dict[JsonMessageType, Callable] = {
             JsonMessageType.STATUS: self._handle_status_message,
             JsonMessageType.EXECUTION_START: self._handle_execution_start,
-            JsonMessageType.EXECUTION_CACHED: lambda d: self._handle_execution_cached(
-                d, prompt_id
-            ),
+            JsonMessageType.EXECUTION_CACHED: lambda d: self._handle_execution_cached(d, prompt_id),
             JsonMessageType.EXECUTING: lambda d: self._handle_executing(d),
             JsonMessageType.EXECUTED: lambda d: self._handle_executed(d, prompt_id),
             JsonMessageType.PROGRESS: self._handle_progress,
@@ -252,17 +239,17 @@ class ComfyUIWebSocketClient(ComfyUIClientBase):
         if handler:
             handler(message.get("data", {}))
 
-    def _handle_status_message(self, data: Dict[str, Any]):
+    def _handle_status_message(self, data: dict[str, Any]):
         """处理状态消息"""
         if "status" in data and "exec_info" in data["status"]:
             remaining = data["status"]["exec_info"].get("queue_remaining", 0)
             self.logger.info(f"队列中剩余任务: {remaining}")
 
-    def _handle_execution_start(self, data: Dict[str, Any]):
+    def _handle_execution_start(self, data: dict[str, Any]):
         """处理执行开始消息"""
         self.logger.info(f"开始执行 prompt_id: {data.get('prompt_id')}")
 
-    def _handle_execution_cached(self, data: Dict[str, Any], prompt_id: str):
+    def _handle_execution_cached(self, data: dict[str, Any], prompt_id: str):
         """处理缓存执行消息"""
         if data.get("prompt_id") == prompt_id:
             cached_nodes = data.get("nodes", [])
@@ -276,7 +263,7 @@ class ComfyUIWebSocketClient(ComfyUIClientBase):
         else:
             self.logger.info(f"正在执行节点: {node}")
 
-    def _handle_executed(self, data: Dict[str, Any], prompt_id: str):
+    def _handle_executed(self, data: dict[str, Any], prompt_id: str):
         """处理节点执行完成消息"""
         if data.get("prompt_id") == prompt_id:
             node = data.get("node")
@@ -291,7 +278,7 @@ class ComfyUIWebSocketClient(ComfyUIClientBase):
             if not self.production_mode:
                 self.logger.debug(f"节点 {node} 输出数据: {output}")
 
-    def _handle_progress(self, data: Dict[str, Any]):
+    def _handle_progress(self, data: dict[str, Any]):
         """处理进度更新消息"""
         node = data.get("node")
         value = data.get("value", 0)
@@ -301,14 +288,14 @@ class ComfyUIWebSocketClient(ComfyUIClientBase):
                 f"进度更新 - 节点 {node}: {value}/{max_val} ({value / max_val * 100:.1f}%)"
             )
 
-    def _handle_progress_state(self, data: Dict[str, Any]):
+    def _handle_progress_state(self, data: dict[str, Any]):
         """处理进度状态消息"""
         if not self.production_mode:
             nodes = data.get("nodes", {})
             for node_id, node_state in nodes.items():
                 self.logger.debug(f"节点 {node_id} 状态: {node_state}")
 
-    def _handle_execution_error(self, data: Dict[str, Any]):
+    def _handle_execution_error(self, data: dict[str, Any]):
         """处理执行错误消息"""
         prompt_id = data.get("prompt_id")
         node_id = data.get("node_id")
@@ -326,14 +313,14 @@ class ComfyUIWebSocketClient(ComfyUIClientBase):
         )
         raise RuntimeError(f"工作流执行错误: {error_msg}")
 
-    def _handle_execution_interrupted(self, data: Dict[str, Any]):
+    def _handle_execution_interrupted(self, data: dict[str, Any]):
         """处理执行中断消息"""
         self.logger.error(
             f"执行被中断! Prompt ID: {data.get('prompt_id')}, 节点ID: {data.get('node_id')}"
         )
         raise RuntimeError("执行被中断")
 
-    def _handle_execution_success(self, data: Dict[str, Any]):
+    def _handle_execution_success(self, data: dict[str, Any]):
         """处理执行成功消息"""
         self.logger.info(f"执行成功! Prompt ID: {data.get('prompt_id')}")
 
@@ -428,7 +415,7 @@ class ComfyUIWebSocketClient(ComfyUIClientBase):
     def _process_history_outputs(
         self,
         history: APIHistoryEntry,  # 类型化的历史条目
-        output_images: Dict[APINodeID, List[bytes]],
+        output_images: dict[APINodeID, list[bytes]],
     ):
         """处理历史记录中的输出图片"""
         outputs = history.get("outputs", {})

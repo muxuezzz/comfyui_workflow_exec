@@ -1,5 +1,6 @@
 # ComfyUI Workflow Executor
 
+![Python](https://img.shields.io/badge/Python-%3E%3D3.10-blue?logo=python)  ![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688?logo=fastapi) 
 一个用于自动化执行ComfyUI工作流的工具，支持动态参数配置、随机值生成和批量任务处理，适用于图像生成等场景的自动化工作流管理。
 
 ## 功能特点
@@ -15,23 +16,35 @@
 
 ```
 comfyui_workflow_exec/
-├── config/                 # 配置文件目录
-│   ├── config.yaml         # YAML格式配置示例
-│   ├── config.json         # JSON格式配置示例
-│   └── workflow_template.json  # 工作流模板
-├── workflows/              # 工作流模板目录
-│   └── workflow_template.json  # 工作流模板
-├── workflow_manager/       # 工作流管理核心模块
+├── main.py                      # 主程序入口
+├── main.py.example              # 主程序示例
+├── readme.md                    # 项目说明文档
+├── comfyui_client/              # ComfyUI客户端模块
 │   ├── __init__.py
-│   ├── workflow_manager.py # 工作流解析与修改
-│   ├── workflow_run.py     # 工作流执行逻辑
-│   └── constant.py         # 常量定义
-├── comfyui_client/         # ComfyUI客户端模块
+│   ├── comfyui_client.py        # HTTP客户端实现
+│   ├── comfyui_simplclient.py   # 简化客户端接口
+│   ├── comfyui_websocket.py     # WebSocket通信实现
+│   └── message_config.py        # 消息类型定义
+├── config/                      # 配置文件与schema
+│   ├── comfy_schema.py          # 配置项schema定义
+│   ├── config.json.example      # JSON配置示例
+│   ├── config.yaml.example      # YAML配置示例
+│   ├── my_config.json           # 用户自定义配置
+│   └── workflow_template.json   # 工作流模板示例
+├── utils/                       # 工具函数模块
 │   ├── __init__.py
-│   ├── comfyui_webscoket.py # WebSocket通信实现
-│   └── message_config.py   # 消息类型定义
-├── main.py                 # 主程序入口
-└── .gitignore              # Git忽略文件
+│   ├── file_utils.py            # 文件操作工具
+│   ├── math_utils.py            # 数学相关工具
+│   └── xml_utils.py             # XML处理工具
+├── workflow_manager/            # 工作流管理核心模块
+│   ├── __init__.py
+│   ├── constant.py              # 常量定义
+│   ├── exceptions.py            # 异常定义
+│   ├── workflow_manager.py      # 工作流解析与修改
+│   ├── workflow_run.py          # 工作流执行逻辑
+├── workflows/                   # 工作流模板目录
+│   └── workflow_template.json   # 工作流模板
+└── .gitignore                   # Git忽略文件
 ```
 
 ## 快速开始

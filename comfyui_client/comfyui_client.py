@@ -1,7 +1,7 @@
 import logging
 import time
 import uuid
-from typing import Any, Dict, Optional
+from typing import Any
 
 import requests
 
@@ -12,16 +12,9 @@ from config.comfy_schema import (
     APIWorkflowTicket,
     PromptID,
 )
+from utils.logger import setup_logger
 
-# 配置日志
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(filename)s:%(lineno)d - %(levelname)s - %(message)s",
-    handlers=[
-        logging.StreamHandler(),
-    ],
-)
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__)
 
 
 class ComfyUIClientBase:
@@ -43,7 +36,7 @@ class ComfyUIClientBase:
         self,
         server_address: str = "127.0.0.1:8188",
         timeout: int = 30,
-        client_id: Optional[str] = None,
+        client_id: str | None = None,
     ):
         """
         初始化客户端基础类
@@ -73,7 +66,7 @@ class ComfyUIClientBase:
     def wait_for_queue_empty(
         self,
         check_interval: float = 1.0,
-        max_wait: Optional[float] = None,
+        max_wait: float | None = None,
         min_queue_num: int = 3,
     ):
         """
@@ -125,10 +118,10 @@ class ComfyUIClientBase:
     def queue_prompt(
         self,
         prompt: APIWorkflow,  # 使用类型化的workflow
-        prompt_id: Optional[PromptID] = None,
+        prompt_id: PromptID | None = None,
         wait_for_queue: bool = False,
         check_interval: float = 1.0,
-        max_wait: Optional[float] = None,
+        max_wait: float | None = None,
         min_queue_num: int = 3,
     ) -> APIWorkflowTicket:  # 返回类型化的响应
         """
@@ -200,7 +193,7 @@ class ComfyUIClientBase:
         except requests.exceptions.RequestException as e:
             raise ConnectionError(f"获取图片失败: {e}") from e
 
-    def get_prompt_status(self) -> Dict[str, Any]:
+    def get_prompt_status(self) -> dict[str, Any]:
         """获取提示状态"""
         try:
             response = self.session.get(f"{self.base_url}/prompt", timeout=self.timeout)
@@ -217,7 +210,7 @@ class ComfyUIClientBase:
         except ConnectionError:
             return False
 
-    def get_system_info(self) -> Dict[str, Any]:
+    def get_system_info(self) -> dict[str, Any]:
         """获取系统信息"""
         try:
             prompt_status = self.get_prompt_status()
@@ -264,7 +257,7 @@ class ComfyUISimpleClient(ComfyUIClientBase):
         self,
         server_address: str = "127.0.0.1:8188",
         timeout: int = 30,
-        client_id: Optional[str] = None,
+        client_id: str | None = None,
     ):
         """
         初始化简易客户端
@@ -280,11 +273,11 @@ class ComfyUISimpleClient(ComfyUIClientBase):
 
     def queue_prompt(
         self,
-        prompt: Dict[str, Any],
-        prompt_id: Optional[str] = None,
+        prompt: dict[str, Any],
+        prompt_id: str | None = None,
         wait_for_queue: bool = False,
         check_interval: float = 1.0,
-        max_wait: Optional[float] = None,
+        max_wait: float | None = None,
         min_queue_num: int = 3,
     ) -> str:
         """

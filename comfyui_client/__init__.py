@@ -1,3 +1,3 @@
-from comfyui_client.comfyui_websocket import ComfyUIWebSocketClient
+from .comfyui_websocket import ComfyUIWebSocketClient
 
 __all__ = ["ComfyUIWebSocketClient"]

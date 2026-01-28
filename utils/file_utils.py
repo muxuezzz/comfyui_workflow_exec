@@ -1,7 +1,6 @@
 # workflow_manager/utils.py
 import json
 from pathlib import Path
-from typing import Dict
 
 import yaml
 
@@ -12,7 +11,7 @@ def resolve_path(config_path: Path, relative_path: str) -> Path:
     return path if path.is_absolute() else (config_path.parent / path).resolve()
 
 
-def load_file_content(file_path: Path) -> Dict:
+def load_file_content(file_path: Path) -> dict:
     if not file_path.exists():
         raise FileNotFoundError(f"文件不存在: {file_path}")
 
