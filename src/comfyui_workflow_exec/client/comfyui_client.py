@@ -6,14 +6,14 @@ from typing import Any
 
 import requests
 
-from config.comfy_schema import (
+from ..config.comfy_schema import (
     APIHistory,
     APIQueueInfo,
     APIWorkflow,
     APIWorkflowTicket,
     PromptID,
 )
-from utils.logger import setup_logger
+from ..utils.logger import setup_logger
 
 logger = setup_logger(__name__)
 

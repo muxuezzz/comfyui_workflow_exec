@@ -1,12 +1,10 @@
-# -*- coding: utf-8 -*-
 import json
-from typing import Any, Dict, List, Literal, NamedTuple, Optional, Union
+from typing import Annotated, Any, Literal, NamedTuple
 from urllib.parse import urljoin
 
 from pydantic import BaseModel, ConfigDict, Field, RootModel, field_validator
-from typing_extensions import Annotated
 
-EXTRA: Union[Literal["allow", "ignore", "forbid"], None] = "allow"
+EXTRA: Literal["allow", "ignore", "forbid"] | None = "allow"
 
 APINodeID = Annotated[str, Field(alias="node_id", description="工作流中节点的ID。")]
 PromptID = Annotated[
@@ -42,9 +40,9 @@ NamedInputType = Annotated[
     ),
 ]
 # 这是组合框输入的有效*值*列表。
-ComboInputType = Annotated[List[Any], Field(alias="combo_input_class")]
+ComboInputType = Annotated[list[Any], Field(alias="combo_input_class")]
 ComfyFolderType = Literal["input", "output", "temp"]
-VALID_FOLDER_TYPES: List[ComfyFolderType] = ["input", "output", "temp"]
+VALID_FOLDER_TYPES: list[ComfyFolderType] = ["input", "output", "temp"]
 
 
 ################################################################################
@@ -62,46 +60,46 @@ class APIWorkflowNodeMeta(BaseModel):
     """
 
     model_config = ConfigDict(extra=EXTRA)
-    title: Optional[str] = None
+    title: str | None = None
 
 
 class APIWorkflowNodeInfo(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra=EXTRA)
     """populate_by_name: 这允许通过 `_meta` 或 `meta` 填充 `meta` 字段。"""
 
-    inputs: Dict[str, Union[str, int, float, bool, APIWorkflowInConnection, dict]]
+    inputs: dict[str, str | int | float | bool | APIWorkflowInConnection | dict]
     class_type: str
-    meta: Optional[APIWorkflowNodeMeta] = Field(None, alias="_meta")
+    meta: APIWorkflowNodeMeta | None = Field(None, alias="_meta")
 
 
-class APIWorkflow(RootModel[Dict[APINodeID, APIWorkflowNodeInfo]]):
+class APIWorkflow(RootModel[dict[APINodeID, APIWorkflowNodeInfo]]):
     """这是 API 格式，您可以从 UI 中的 `Save (API Format)` 获取它。
 
     请查看 test_data/sdxlturbo_example_api.json 以获取此格式的 json 示例。
     """
 
-    root: Dict[APINodeID, APIWorkflowNodeInfo]
+    root: dict[APINodeID, APIWorkflowNodeInfo]
 
 
 ################################################################################
 class APISystemStatsSystem(BaseModel):
     model_config = ConfigDict(extra=EXTRA)
 
-    os: Optional[str] = None
-    python_version: Optional[str] = None
-    embedded_python: Optional[bool] = None
+    os: str | None = None
+    python_version: str | None = None
+    embedded_python: bool | None = None
 
 
 class APISystemStatsDevice(BaseModel):
     model_config = ConfigDict(extra=EXTRA)
 
-    name: Optional[str] = None
-    type: Optional[str] = None
-    index: Optional[int] = None
-    vram_total: Optional[int] = None
-    vram_free: Optional[int] = None
-    torch_vram_total: Optional[int] = None
-    torch_vram_free: Optional[int] = None
+    name: str | None = None
+    type: str | None = None
+    index: int | None = None
+    vram_total: int | None = None
+    vram_free: int | None = None
+    torch_vram_total: int | None = None
+    torch_vram_free: int | None = None
 
 
 class APISystemStats(BaseModel):
@@ -109,8 +107,8 @@ class APISystemStats(BaseModel):
 
     model_config = ConfigDict(extra=EXTRA)
 
-    system: Optional[APISystemStatsSystem] = None
-    devices: Optional[List[APISystemStatsDevice]] = None
+    system: APISystemStatsSystem | None = None
+    devices: list[APISystemStatsDevice] | None = None
 
 
 ################################################################################
@@ -118,9 +116,9 @@ class APIPromptInfo(BaseModel):
     """从 /prompt 端点返回。"""
 
     class ExecInfo(BaseModel):
-        queue_remaining: Optional[int]
+        queue_remaining: int | None
 
-    exec_info: Optional[ExecInfo]
+    exec_info: ExecInfo | None
 
 
 ################################################################################
@@ -129,7 +127,7 @@ class APIQueueInfoEntry(NamedTuple):
     prompt_id: PromptID
     prompt: APIWorkflow
     extra_data: dict
-    outputs_to_execute: List[APINodeID]
+    outputs_to_execute: list[APINodeID]
 
 
 class APIQueueInfo(BaseModel):
@@ -137,8 +135,8 @@ class APIQueueInfo(BaseModel):
 
     model_config = ConfigDict(extra=EXTRA)
 
-    queue_pending: List[APIQueueInfoEntry]
-    queue_running: List[APIQueueInfoEntry]
+    queue_pending: list[APIQueueInfoEntry]
+    queue_running: list[APIQueueInfoEntry]
 
 
 ################################################################################
@@ -155,8 +153,8 @@ class NodeErrors(BaseModel):
     model_config = ConfigDict(extra=EXTRA)
 
     class_type: str
-    dependent_outputs: List[APINodeID]
-    errors: List[NodeErrorInfo]
+    dependent_outputs: list[APINodeID]
+    errors: list[NodeErrorInfo]
 
 
 class APIWorkflowTicket(BaseModel):
@@ -164,17 +162,17 @@ class APIWorkflowTicket(BaseModel):
 
     model_config = ConfigDict(extra=EXTRA)
 
-    node_errors: Optional[Dict[APINodeID, NodeErrors]] = None
-    number: Optional[int] = None
-    prompt_id: Optional[PromptID] = None
-    error: Union[NodeErrorInfo, str, None] = None
+    node_errors: dict[APINodeID, NodeErrors] | None = None
+    number: int | None = None
+    prompt_id: PromptID | None = None
+    error: NodeErrorInfo | str | None = None
 
 
 ################################################################################
 
 
-class APIOutputUI(RootModel[Dict[OutputName, List[Any]]]):
-    root: Dict[OutputName, List[Any]]
+class APIOutputUI(RootModel[dict[OutputName, list[Any]]]):
+    root: dict[OutputName, list[Any]]
 
 
 class APIHistoryEntryStatusNote(NamedTuple):
@@ -204,26 +202,26 @@ class APIHistoryEntryStatus(BaseModel):
 
     model_config = ConfigDict(extra=EXTRA)
 
-    status_str: Optional[str] = None
-    completed: Optional[bool] = None
-    messages: Optional[List[APIHistoryEntryStatusNote]] = None
+    status_str: str | None = None
+    completed: bool | None = None
+    messages: list[APIHistoryEntryStatusNote] | None = None
 
 
 class APIHistoryEntry(BaseModel):
     model_config = ConfigDict(extra=EXTRA)
 
-    outputs: Optional[Dict[APINodeID, APIOutputUI]] = None
-    prompt: Optional[APIQueueInfoEntry] = None
-    status: Optional[APIHistoryEntryStatus] = None
+    outputs: dict[APINodeID, APIOutputUI] | None = None
+    prompt: APIQueueInfoEntry | None = None
+    status: APIHistoryEntryStatus | None = None
 
 
-class APIHistory(RootModel[Dict[PromptID, APIHistoryEntry]]):
+class APIHistory(RootModel[dict[PromptID, APIHistoryEntry]]):
     """如果调用 /history 和 /history/{prompt_id} 端点则返回。
 
     TODO: 显示示例。
     """
 
-    root: Dict[PromptID, APIHistoryEntry]
+    root: dict[PromptID, APIHistoryEntry]
 
 
 ################################################################################
@@ -262,11 +260,11 @@ class APIObjectInputInfo(BaseModel):
 
   我在这里允许 extra 是因为我不知道键是什么，而且它们似乎变化很大。
   """
-    default: Optional[Any] = None
-    min: Optional[Any] = None
-    max: Optional[Any] = None
-    step: Optional[Any] = None
-    round: Optional[Any] = None
+    default: Any | None = None
+    min: Any | None = None
+    max: Any | None = None
+    step: Any | None = None
+    round: Any | None = None
     # 注意：其他所有内容都将存储在 extra 字典中。通过 `extra` 属性访问它。
 
 
@@ -283,9 +281,9 @@ class APIObjectInputTuple(NamedTuple):
       列表/元组中的第一项是类型，第二项是可选的 info。
     """
 
-    type: Union[NamedInputType, ComboInputType]
+    type: NamedInputType | ComboInputType
     # 出于某种原因，当 type=='*' 时，这是一个空字符串。
-    info: Union[APIObjectInputInfo, str, None] = None
+    info: APIObjectInputInfo | str | None = None
 
 
 class APIObjectInput(BaseModel):
@@ -304,13 +302,13 @@ class APIObjectInput(BaseModel):
 
     model_config = ConfigDict(extra=EXTRA)
 
-    required: Optional[Dict[str, Union[APIObjectInputTuple, NamedInputType]]] = None
+    required: dict[str, APIObjectInputTuple | NamedInputType] | None = None
     """
   出于某种原因，当 type=='*' 时，它只显示类型而没有 `[type, {... limits}]` 元组，所以我允许了 NamedInputType。
   """
 
-    optional: Optional[Dict[str, Union[APIObjectInputTuple, NamedInputType]]] = None
-    hidden: Optional[Dict[str, Union[APIObjectInputTuple, NamedInputType]]] = None
+    optional: dict[str, APIObjectInputTuple | NamedInputType] | None = None
+    hidden: dict[str, APIObjectInputTuple | NamedInputType] | None = None
 
 
 class APIObjectInfoEntry(BaseModel):
@@ -344,9 +342,9 @@ class APIObjectInfoEntry(BaseModel):
     model_config = ConfigDict(extra=EXTRA)
 
     input: APIObjectInput
-    output: Union[OutputType, List[Union[OutputType, List[OutputType]]]]
-    output_is_list: List[bool]
-    output_name: Union[OutputName, List[OutputName]]
+    output: OutputType | list[OutputType | list[OutputType]]
+    output_is_list: list[bool]
+    output_name: OutputName | list[OutputName]
     name: str
     display_name: str
     description: str
@@ -354,7 +352,7 @@ class APIObjectInfoEntry(BaseModel):
     output_node: bool
 
 
-class APIObjectInfo(RootModel[Dict[APIObjectKey, APIObjectInfoEntry]]):
+class APIObjectInfo(RootModel[dict[APIObjectKey, APIObjectInfoEntry]]):
     """从 /object_info 端点返回。
 
     请查看 test_data/object_info.yml 以获取此格式的 yaml 示例。
@@ -439,7 +437,7 @@ class APIObjectInfo(RootModel[Dict[APIObjectKey, APIObjectInfoEntry]]):
 
     # model_config = ConfigDict(extra=EXTRA)
 
-    root: Dict[APIObjectKey, APIObjectInfoEntry]
+    root: dict[APIObjectKey, APIObjectInfoEntry]
 
 
 ################################################################################
@@ -464,8 +462,8 @@ class WSExecutingData(BaseModel):
 
     model_config = ConfigDict(extra=EXTRA)
 
-    node: Optional[str] = None
-    prompt_id: Optional[PromptID] = None
+    node: str | None = None
+    prompt_id: PromptID | None = None
 
 
 class WSMessage(BaseModel):
@@ -495,9 +493,7 @@ class ComfyUIPathTriplet(BaseModel):
     @classmethod
     def validate_folder_type(cls, v: str):
         if v not in VALID_FOLDER_TYPES:
-            raise ValueError(
-                f"folder_type {json.dumps(v)} 不是 {VALID_FOLDER_TYPES} 之一"
-            )
+            raise ValueError(f"folder_type {json.dumps(v)} 不是 {VALID_FOLDER_TYPES} 之一")
         return v
 
     @field_validator("subfolder")

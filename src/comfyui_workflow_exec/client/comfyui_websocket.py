@@ -8,15 +8,15 @@ from typing import Any
 import websocket
 from pydantic import ValidationError
 
-from config.comfy_schema import (
+from ..config.comfy_schema import (
     APIHistoryEntry,
     APINodeID,
     PromptID,  # 历史条目
     WSExecutingData,  # 执行数据
     WSMessage,  # WebSocket消息
 )
-from utils.logger import setup_logger
-from workflow_manager.exceptions import WorkflowConnectionError
+from ..utils.logger import setup_logger
+from ..workflow.exceptions import WorkflowConnectionError
 
 from .comfyui_client import ComfyUIClientBase
 from .message_config import BinaryMessageType, JsonMessageType, MessageHandlingPolicy

@@ -2,9 +2,9 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from comfyui_client.comfyui_client import ComfyUISimpleClient
-from comfyui_client.comfyui_websocket import ComfyUIWebSocketClient
-from utils.logger import setup_logger
+from ..client.comfyui_client import ComfyUISimpleClient
+from ..client.comfyui_websocket import ComfyUIWebSocketClient
+from ..utils.logger import setup_logger
 
 from .exceptions import ConfigValidationError, WorkflowConnectionError
 from .workflow_manager import WorkflowManager

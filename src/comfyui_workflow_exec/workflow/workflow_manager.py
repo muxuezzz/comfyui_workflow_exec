@@ -6,8 +6,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
-from utils.file_utils import load_file_content
-from utils.logger import setup_logger
+from ..utils.file_utils import load_file_content
+from ..utils.logger import setup_logger
 
 from .constant import SEED_NODE_LIST, SEED_PARA_LIST
 

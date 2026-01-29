@@ -1,9 +1,8 @@
 import os
 from pathlib import Path
 
-from comfyui_client.comfyui_websocket import ComfyUIWebSocketClient
-from utils.logger import setup_logger
-from workflow_manager.workflow_run import execute_workflow_task
+from comfyui_workflow_exec import ComfyUIWebSocketClient, execute_workflow_task
+from comfyui_workflow_exec.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
 

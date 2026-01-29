@@ -3,7 +3,7 @@ from typing import Optional, Type
 
 from pydantic import BaseModel
 
-from config.comfy_schema import APIHistoryEntryStatus, WSExecutingData
+from ..config.comfy_schema import APIHistoryEntryStatus, WSExecutingData
 
 
 class BinaryMessageType(Enum):
